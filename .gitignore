@@ -128,3 +128,33 @@ logs/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Model and embedding caches
+.fastembed_cache/
+.cache/
+huggingface/
+~/.cache/huggingface/
+models/
+*.onnx
+*.pt
+*.bin
+*.safetensors
+
+# Ruff / linting caches
+.ruff_cache/
+
+# Pre-commit
+.pre-commit-cache/
+
+# UV package manager
+.uv/
+
+# Antigravity / agent caches
+.gemini/
+.antigravity/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
