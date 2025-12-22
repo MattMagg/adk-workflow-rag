@@ -8,24 +8,6 @@ Create an `LlmAgent` (aliased as `Agent`) — the core "thinking" component that
 
 ---
 
-## Prerequisites
-
-- [ ] ADK installed (`pip install google-adk`)
-- [ ] Google Cloud project or API key configured
-- [ ] Environment variables set:
-  ```bash
-  # For Google AI Studio
-  export GOOGLE_API_KEY="YOUR_API_KEY"
-  export GOOGLE_GENAI_USE_VERTEXAI=FALSE
-  
-  # For Vertex AI
-  export GOOGLE_CLOUD_PROJECT="YOUR_PROJECT_ID"
-  export GOOGLE_CLOUD_LOCATION="us-central1"
-  export GOOGLE_GENAI_USE_VERTEXAI=TRUE
-  ```
-
----
-
 ## Step 1: Import LlmAgent
 
 ```python
@@ -69,23 +51,15 @@ When a user asks for the capital of a country:
 
 | Model | Use Case |
 |-------|----------|
-| `gemini-2.0-flash` | Fast, cost-effective, general tasks |
-| `gemini-2.5-flash` | Latest flash with improved capabilities |
-| `gemini-2.5-pro-preview-03-25` | Most powerful, complex reasoning |
+| `gemini-3-flash-preview` | Latest flash with improved capabilities |
+| `gemini-3-pro` | Most powerful, complex reasoning |
 
 ```python
-# Fast agent
-fast_agent = LlmAgent(
-    model="gemini-2.0-flash",
-    name="fast_agent",
+# Agent
+agent = LlmAgent(
+    model="gemini-3-pro",
+    name="agent",
     instruction="You are a fast and helpful assistant.",
-)
-
-# Powerful agent
-powerful_agent = LlmAgent(
-    model="gemini-2.5-pro-preview-03-25",
-    name="powerful_agent",
-    instruction="You are a knowledgeable assistant for complex tasks.",
 )
 ```
 

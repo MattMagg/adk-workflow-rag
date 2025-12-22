@@ -10,6 +10,11 @@ src/grounding/        # RAG pipeline (Qdrant + Voyage embeddings)
 corpora/              # Ingested ADK docs and Python source
 config/               # Settings and environment config
 ```
+## MODELS
+
+**DO NOT USE** ANY MODEL BELOW GEMINI 3!
+
+Always use `gemini-3-pro-preview` or `gemini-3-flash-preview` 
 
 ## ADK Workflow System
 
