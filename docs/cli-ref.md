@@ -85,3 +85,36 @@ Commands for handling port conflicts and managing background processes.
 | `ps aux \| grep adk` | Lists all running processes matching "adk". |
 | `kill -9 <PID>` | Force-terminates a process by its PID. |
 | `pkill -f "adk web"` | Kills all processes matching the pattern "adk web". |
+
+
+### **8. ADK Starter Pack**
+
+# Create with all defaults (project: my-agent, agent: adk_base, target: agent_engine)
+uvx agent-starter-pack create -y
+
+# Fully interactive mode
+uvx agent-starter-pack create
+
+# Quick prototype (no CI/CD, no Terraform)
+uvx agent-starter-pack create my-prototype -p -d agent_engine
+
+# Create a new project with specific name
+uvx agent-starter-pack create my-agent-project
+
+# Create with specific built-in agent
+uvx agent-starter-pack create my-agent -a adk_base -d cloud_run
+
+# Include data ingestion with specific datastore
+uvx agent-starter-pack create my-rag-agent -a adk_base -i -ds cloud_sql -d cloud_run
+
+# Create with custom region and CI/CD
+uvx agent-starter-pack create my-agent -a template-url --region europe-west1 --cicd-runner github_actions
+
+# In-folder creation (add to existing project)
+uvx agent-starter-pack create my-agent -a adk@data-science --in-folder
+
+# Customize agent directory name
+uvx agent-starter-pack create my-agent -a adk_base --agent-directory chatbot
+
+# Skip all prompts for automation
+uvx agent-starter-pack create my-agent -a template-url -y --skip-checks
