@@ -1,10 +1,49 @@
 ---
 description: Create LlmAgent with model, name, instructions, and optional configuration
+triggers:
+  - create agent
+  - new agent
+  - LlmAgent
+  - agent setup
+  - build agent
+category: agents
+dependencies:
+  - adk-init
+outputs:
+  - path: "{agent_name}/agent.py"
+    type: file
+  - path: "{agent_name}/__init__.py"
+    type: file
+context_required:
+  - agent_name
+  - agent_purpose
+  - model_choice
+completion_criteria:
+  - "agent.py contains root_agent = LlmAgent(...)"
+  - "adk run {agent_name} executes without errors"
+estimated_steps: 5
+difficulty: beginner
 ---
 
 # ADK Workflow: Create LlmAgent
 
 Create an `LlmAgent` (aliased as `Agent`) — the core "thinking" component that leverages an LLM for reasoning, decision-making, and tool interaction.
+
+---
+
+## Agent Decision Logic
+
+> **Use this workflow when:**
+> - User wants to create a new LLM-powered agent
+> - User mentions "agent", "LlmAgent", or wants AI reasoning capabilities
+> - Building the core "thinking" component of an agentic system
+>
+> **Do NOT use when:**
+> - User needs a custom agent with non-LLM logic → use `/adk-agents-custom`
+> - User wants to configure an existing agent's model → use `/adk-agents-multi-model`
+> - User needs workflow orchestration without LLM → use `/adk-multi-agent-orchestration`
+>
+> **Prerequisites:** `/adk-init` must be completed (project structure exists)
 
 ---
 
@@ -253,6 +292,27 @@ for event in events:
 | Agent not routing correctly | Poor description | Make description specific and differentiating |
 | Unexpected responses | Unclear instructions | Use structured markdown, add examples |
 | State variable error | Missing state key | Add `?` suffix for optional: `{var?}` |
+
+---
+
+## Error Recovery
+
+| Error | Cause | Recovery Action |
+|-------|-------|-----------------|
+| `ModuleNotFoundError: google.adk` | ADK not installed | Run `pip install google-adk` in virtual env |
+| `ValueError: name 'user' is reserved` | Used reserved agent name | Change `name` parameter to different value |
+| Agent not appearing in `adk web` | `root_agent` not defined | Ensure agent is assigned to `root_agent` variable |
+| `TypeError: missing model` | Model not specified | Add `model="gemini-3-flash-preview"` parameter |
+
+---
+
+## Next Workflows
+
+After completing this workflow:
+- `/adk-tools-function` — Add custom tools to your agent
+- `/adk-behavior-state` — Configure session state management
+- `/adk-behavior-callbacks` — Add lifecycle callbacks for logging/validation
+- `/adk-multi-agent-delegation` — Create sub-agents for task delegation
 
 ---
 
