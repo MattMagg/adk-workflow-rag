@@ -152,7 +152,7 @@ models/
 # Antigravity / agent caches
 .gemini/
 .antigravity/
-
+.claude/
 # Temporary files
 *.tmp
 *.temp
