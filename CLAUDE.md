@@ -1,0 +1,91 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+Dual-purpose repository: (1) RAG pipeline with Voyage AI embeddings + Qdrant vector DB, and (2) 43 agent-optimized ADK workflows for building agentic systems with Google Agent Development Kit.
+
+## Commands
+
+```bash
+# Install
+pip install -e .
+pip install -e ".[dev]"  # with dev dependencies
+
+# Run tests
+pytest tests/
+
+# Query the RAG pipeline
+python -m src.grounding.query.query_adk "your query" --verbose
+python -m src.grounding.query.query_adk "your query" --multi-query --top-k 12
+
+# Pipeline scripts (run in order for fresh setup)
+python -m src.grounding.scripts.00_smoke_test_connections
+python -m src.grounding.scripts.01_print_effective_config
+python -m src.grounding.scripts.02_ensure_collection_schema
+python -m src.grounding.scripts.03_ingest_corpus --corpus adk_docs
+python -m src.grounding.scripts.03_ingest_corpus  # all corpora
+
+# Workflow tooling
+python .agent/scripts/validate_workflows.py --verbose
+python .agent/scripts/select_workflow.py "add a function tool"
+```
+
+## Architecture
+
+### RAG Pipeline (`src/grounding/`)
+
+Multi-stage retrieval: Hybrid Search → RRF Fusion → Coverage Balancing → Voyage Rerank
+
+- **Query entry point**: `src/grounding/query/query_adk.py` - `search_adk()` function
+- **Config**: `src/grounding/config.py` loads `.env` + `config/settings.yaml` with `${VAR}` substitution
+- **Clients**: `clients/` wraps Qdrant, Voyage AI, and FastEmbed (SPLADE)
+- **Chunkers**: `chunkers/markdown.py` (heading-aware), `chunkers/python_code.py` (AST-based)
+- **Contracts**: Pydantic models in `contracts/` for `Chunk`, `Document`, IDs
+
+Vector spaces in Qdrant:
+- `dense_docs` - voyage-context-3 (2048d) for documentation
+- `dense_code` - voyage-code-3 (2048d) for Python code
+- `sparse_lexical` - SPLADE++ for keyword matching
+
+### ADK Workflows (`.agent/workflows/`)
+
+Agent-optimized workflows with machine-readable frontmatter:
+
+- **Schema**: `_schema.yaml` defines triggers, dependencies, outputs, completion_criteria
+- **Manifest**: `_manifest.json` has dependency graph and routing keywords
+- **Master**: `adk-master.md` routes to appropriate sub-workflow
+- **Categories**: init, agents, tools, behavior, multi-agent, memory, security, streaming, deploy, quality, advanced
+
+Frontmatter fields enable programmatic workflow selection:
+```yaml
+triggers: [keywords that route here]
+dependencies: [required prior workflows]
+completion_criteria: [how to verify success]
+```
+
+## Key Patterns
+
+### Configuration
+Settings loaded via `get_settings()` from `src/grounding/config.py`. Credentials in `.env`, structure in `config/settings.yaml`.
+
+### Corpus Ingestion
+Each corpus in `config/settings.yaml` under `ingestion.corpora` defines include/exclude globs, allowed extensions, and content kind (doc/code). Idempotent via text_hash comparison.
+
+### Retrieval Flow
+1. Embed query with voyage-context-3 (docs) + voyage-code-3 (code) + SPLADE (sparse)
+2. Prefetch from 3 vector spaces with RRF fusion in Qdrant
+3. Balance candidate pool to ensure docs/code mix
+4. Rerank top candidates with voyage rerank-2.5
+5. Apply coverage gates for final selection
+
+## Environment Variables
+
+Required in `.env`:
+- `VOYAGE_API_KEY`
+- `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION`
+
+Optional retrieval tuning:
+- `RETRIEVAL_PREFETCH_LIMIT_DENSE`, `RETRIEVAL_PREFETCH_LIMIT_SPARSE`
+- `RETRIEVAL_FINAL_LIMIT`, `RERANK_TOP_K`
