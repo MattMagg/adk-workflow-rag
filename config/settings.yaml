@@ -115,3 +115,49 @@ ingestion:
       allowed_exts: [".md"]
       max_file_bytes: 5000000  # 5MB for large PDF extractions
 
+    # OpenAI Agents SDK - Documentation
+    openai_agents_docs:
+      root: "corpora/openai-agents-python"
+      corpus: "openai_agents_docs"
+      repo: "openai/openai-agents-python"
+      kind: "doc"  # Uses voyage-context-3
+      ref: "main"
+      include_globs:
+        - "docs/**/*.md"
+        - "README.md"
+        - "AGENTS.md"
+        - "CLAUDE.md"
+      exclude_globs:
+        - "**/.git/**"
+        - "docs/ja/**"                # Skip Japanese translations
+        - "docs/ko/**"                # Skip Korean translations
+        - "docs/zh/**"                # Skip Chinese translations
+        - "docs/ref/**"               # Skip auto-generated API reference
+        - "docs/stylesheets/**"
+        - "docs/scripts/**"
+        - "docs/assets/**"
+        - "llms-full.txt"
+        - "llms.txt"
+      allowed_exts: [".md"]
+      max_file_bytes: 500000
+
+    # OpenAI Agents SDK - Python Source Code
+    openai_agents_python:
+      root: "corpora/openai-agents-python"
+      corpus: "openai_agents_python"
+      repo: "openai/openai-agents-python"
+      kind: "code"  # Uses voyage-code-3
+      ref: "main"
+      include_globs:
+        - "src/**/*.py"
+        - "examples/**/*.py"
+        - "tests/**/*.py"
+        - "pyproject.toml"
+      exclude_globs:
+        - "**/.git/**"
+        - "**/__pycache__/**"
+        - "**/.venv/**"
+        - "**/*.pyc"
+      allowed_exts: [".py", ".toml"]
+      max_file_bytes: 500000
+
