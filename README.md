@@ -20,7 +20,7 @@ End-to-end retrieval infrastructure optimized for accuracy:
 - **Drop-in Architecture** – Clone any repo, point to any docs folder, and ingest
 
 ### ADK Agent Workflows
-Comprehensive workflows enabling IDE agents to autonomously build agentic systems:
+Comprehensive **agent-optimized** workflows enabling IDE agents to autonomously build agentic systems:
 
 | Category | Workflows | Coverage |
 |----------|-----------|----------|
@@ -34,6 +34,9 @@ Comprehensive workflows enabling IDE agents to autonomously build agentic system
 | **Security** | `adk-security-*` | Auth, guardrails, security plugins |
 | **Quality** | `adk-quality-*` | Logging, tracing, observability, evals |
 | **Advanced** | `adk-advanced-*` | ThinkingConfig, visual builder |
+| **Meta** | `adk-master`, `adk-create-workflow` | Workflow orchestration and creation |
+
+**Agent Infrastructure:** Workflows include machine-readable frontmatter with triggers, dependencies, and completion criteria for programmatic selection.
 
 ---
 
@@ -161,19 +164,26 @@ python -m src.grounding.query.query_adk "your query" --multi-query --verbose
 
 ```
 rag_qdrant_voyage/
-├── .agent/workflows/        # ADK DEVELOPMENT WORKFLOWS (43 files)
-│   ├── adk-master.md        # Master orchestrator
-│   ├── adk-init*.md         # Project initialization
-│   ├── adk-agents-*.md      # Agent creation patterns
-│   ├── adk-tools-*.md       # Tool integration
-│   ├── adk-behavior-*.md    # Agent behavior
-│   ├── adk-multi-agent-*.md # Multi-agent orchestration
-│   ├── adk-memory-*.md      # Memory and grounding
-│   ├── adk-streaming-*.md   # Streaming patterns
-│   ├── adk-deploy-*.md      # Deployment workflows
-│   ├── adk-security-*.md    # Security patterns
-│   ├── adk-quality-*.md     # Quality assurance
-│   └── adk-advanced-*.md    # Advanced features
+├── .agent/
+│   ├── workflows/           # ADK DEVELOPMENT WORKFLOWS (43 files)
+│   │   ├── _schema.yaml     # Agent-optimized frontmatter schema
+│   │   ├── _manifest.json   # Workflow index with dependency graph
+│   │   ├── adk-master.md    # Master orchestrator
+│   │   ├── adk-init*.md     # Project initialization
+│   │   ├── adk-agents-*.md  # Agent creation patterns
+│   │   ├── adk-tools-*.md   # Tool integration
+│   │   ├── adk-behavior-*.md    # Agent behavior
+│   │   ├── adk-multi-agent-*.md # Multi-agent orchestration
+│   │   ├── adk-memory-*.md      # Memory and grounding
+│   │   ├── adk-streaming-*.md   # Streaming patterns
+│   │   ├── adk-deploy-*.md      # Deployment workflows
+│   │   ├── adk-security-*.md    # Security patterns
+│   │   ├── adk-quality-*.md     # Quality assurance
+│   │   └── adk-advanced-*.md    # Advanced features
+│   ├── scripts/             # Workflow tooling
+│   │   ├── validate_workflows.py  # Schema compliance checker
+│   │   └── select_workflow.py     # Query-to-workflow router
+│   └── tools/               # Non-workflow agent tools
 ├── config/
 │   ├── settings.yaml        # Main configuration
 │   └── logging.yaml         # Logging configuration
@@ -226,6 +236,26 @@ Copy `.agent/workflows/` to your project and reference the workflows in your age
 | `adk-security-*` | Auth, guardrails, security plugins |
 | `adk-quality-*` | Logging, tracing, evals, observability |
 | `adk-advanced-*` | ThinkingConfig, visual builder |
+
+### Agent Tooling
+
+The workflows include infrastructure for programmatic selection and validation:
+
+```bash
+# Find the right workflow for a task (with dependency chain)
+python .agent/scripts/select_workflow.py "add a function tool to my agent"
+# Output: adk-init → adk-agents-create → adk-tools-function
+
+# Validate all workflows against schema
+python .agent/scripts/validate_workflows.py --verbose
+
+# List all workflow categories
+python .agent/scripts/select_workflow.py --list-categories
+```
+
+**Manifest (`_manifest.json`):** Contains workflow index, dependency graph, and routing keywords for agent-based selection.
+
+**Schema (`_schema.yaml`):** Defines frontmatter fields (triggers, dependencies, outputs, completion_criteria) for agent-optimized parsing.
 
 ---
 
