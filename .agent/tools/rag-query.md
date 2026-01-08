@@ -1,32 +1,49 @@
 ---
-description: Query the ADK RAG database for grounding information
+description: Query the RAG database for grounding information (supports Google ADK, OpenAI Agents SDK, and general agent docs)
 ---
 
-# RAG Query Workflow
+# RAG Query Tool
 
-Query the ADK grounding database for documentation and code examples.
+Query the grounding database for documentation and code examples. Use `--sdk` to isolate queries to a specific SDK.
 
 ---
 
-## CLI Usage
+## SDK-based Filtering (Recommended)
 
 ```bash
-# Activate venv first
 source .venv/bin/activate
 
-# Basic query (12 results)
-python -m src.grounding.query.query_adk "your query" --top-k 12
+# Query Google ADK only
+python -m src.grounding.query.query_adk "how to use ToolContext" --sdk adk
 
-# Verbose output with timing breakdown
-python -m src.grounding.query.query_adk "your query" --verbose
+# Query OpenAI Agents SDK only
+python -m src.grounding.query.query_adk "how to create handoffs" --sdk openai
+
+# Query general agent development docs
+python -m src.grounding.query.query_adk "agent architectures" --sdk general
+```
+
+### SDK Groups
+
+| Flag | Corpora Included |
+|------|------------------|
+| `--sdk adk` | `adk_docs`, `adk_python` |
+| `--sdk openai` | `openai_agents_docs`, `openai_agents_python` |
+| `--sdk general` | `agent_dev_docs` |
+
+---
+
+## Additional Options
+
+```bash
+# Verbose output with timing
+python -m src.grounding.query.query_adk "your query" --sdk adk --verbose
 
 # Multi-query expansion (better recall, slower)
-python -m src.grounding.query.query_adk "your query" --multi-query --verbose
+python -m src.grounding.query.query_adk "your query" --sdk adk --multi-query
 
-# Filter by corpus
-python -m src.grounding.query.query_adk "your query" --corpus adk_docs
-python -m src.grounding.query.query_adk "your query" --corpus adk_python
-python -m src.grounding.query.query_adk "your query" --corpus agent_dev_docs
+# Filter by specific corpus (multiple allowed)
+python -m src.grounding.query.query_adk "your query" --corpus adk_docs --corpus adk_python
 ```
 
 ---
@@ -34,18 +51,13 @@ python -m src.grounding.query.query_adk "your query" --corpus agent_dev_docs
 ## Python Usage
 
 ```python
-from src.grounding.query.query_adk import search_adk
+from src.grounding.query.query_adk import search_adk, SDK_GROUPS
 
-# Basic search
-results = search_adk("how to use ToolContext", top_k=12)
-
-# With options
+# Query with SDK filter
 results = search_adk(
-    query="callbacks in ADK",
+    query="how to use ToolContext",
     top_k=12,
-    mode="build",           # build, debug, explain, refactor
-    multi_query=True,       # Enable query expansion
-    verbose=True            # Print timing breakdown
+    filters={"corpus": SDK_GROUPS["adk"]}
 )
 
 # Access results
@@ -56,26 +68,29 @@ for r in results["results"]:
 
 ---
 
-## Options
+## Options Reference
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--sdk` | none | SDK group: `adk`, `openai`, `general` |
+| `--corpus` | all | Filter by specific corpus (repeatable) |
 | `--top-k` | 12 | Number of results |
 | `--mode` | build | Retrieval mode: build, debug, explain, refactor |
-| `--multi-query` | off | Enable query expansion (slower, +15% recall) |
-| `--corpus` | all | Filter by corpus (see below) |
+| `--multi-query` | off | Enable query expansion (+15% recall, slower) |
 | `--verbose` | off | Show timing breakdown |
 | `--no-rerank` | off | Disable VoyageAI reranking |
 
 ---
 
-## Corpora
+## All Corpora
 
-| Corpus | Description |
-|--------|-------------|
-| `adk_docs` | Official ADK documentation (guides, API ref) |
-| `adk_python` | ADK Python source code (src/, tests/) |
-| `agent_dev_docs` | Agent development PDFs & notebook examples |
+| Corpus | SDK | Type | Description |
+|--------|-----|------|-------------|
+| `adk_docs` | adk | doc | Official ADK documentation |
+| `adk_python` | adk | code | ADK Python source code |
+| `openai_agents_docs` | openai | doc | OpenAI Agents SDK documentation |
+| `openai_agents_python` | openai | code | OpenAI Agents SDK source code |
+| `agent_dev_docs` | general | doc | Agent development PDFs & notebooks |
 
 ---
 
