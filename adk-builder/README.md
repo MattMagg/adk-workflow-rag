@@ -26,13 +26,6 @@ claude --plugin-dir /path/to/adk-builder
 /plugin install adk-builder@adk-tools
 ```
 
-### Option 3: Git Clone
-
-```bash
-git clone https://github.com/MattMagg/adk-workflow-rag.git
-claude --plugin-dir ./adk-builder
-```
-
 ## Agents
 
 The plugin provides four specialized agents:
