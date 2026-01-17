@@ -162,3 +162,6 @@ temp/
 corpora/agent-dev-docs
 
 .mcp.json
+
+# Session transcripts
+session-*.md
