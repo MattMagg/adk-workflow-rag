@@ -18,8 +18,16 @@ from pydantic import BaseModel, Field
 
 
 SourceCorpus = Literal[
-    "adk_docs", "adk_python", "agent_dev_docs",
-    "openai_agents_docs", "openai_agents_python"
+    "adk_docs",
+    "adk_python",
+    "agent_dev_docs",
+    "openai_agents_docs",
+    "openai_agents_python",
+    # LangChain ecosystem
+    "langgraph_python",
+    "langchain_python",
+    "deepagents_docs",
+    "deepagents_python",
 ]
 ContentKind = Literal["code", "doc"]
 
@@ -27,11 +35,11 @@ ContentKind = Literal["code", "doc"]
 class Chunk(BaseModel):
     """
     Canonical chunk payload for Qdrant storage.
-    
+
     All fields match spec §4.1 - Payload Schema requirements.
     Field names are aligned with Qdrant payload indexes.
     """
-    
+
     # Identity & provenance (spec §4.1)
     chunk_id: str = Field(
         description="Stable unique ID (SHA-1 based) - also used as Qdrant point ID"
@@ -40,40 +48,30 @@ class Chunk(BaseModel):
         description="Which corpus: adk_docs | adk_python | agent_dev_docs"
     )
 
-    repo: str = Field(
-        description="Repository identifier, e.g. 'google/adk-docs'"
-    )
-    commit: str = Field(
-        description="Git commit SHA at time of ingestion"
-    )
+    repo: str = Field(description="Repository identifier, e.g. 'google/adk-docs'")
+    commit: str = Field(description="Git commit SHA at time of ingestion")
     ref: str = Field(
-        default="main",
-        description="Git branch/tag (optional but recommended)"
+        default="main", description="Git branch/tag (optional but recommended)"
     )
-    
+
     # Location (spec §4.1)
-    path: str = Field(
-        description="Repo-relative file path"
-    )
+    path: str = Field(description="Repo-relative file path")
     symbol: str | None = Field(
         default=None,
-        description="Optional symbol name for code (class.method or function)"
+        description="Optional symbol name for code (class.method or function)",
     )
-    
+
     # Chunk boundaries (spec §4.1)
     chunk_index: int = Field(
-        ge=0,
-        description="0-based index of this chunk within the file"
+        ge=0, description="0-based index of this chunk within the file"
     )
     start_line: int | None = Field(
-        default=None,
-        description="Start line number (1-indexed), nullable for docs"
+        default=None, description="Start line number (1-indexed), nullable for docs"
     )
     end_line: int | None = Field(
-        default=None,
-        description="End line number (1-indexed), nullable for docs"
+        default=None, description="End line number (1-indexed), nullable for docs"
     )
-    
+
     # Content (spec §4.1)
     text: str = Field(
         description="The chunk text used for embedding + rerank candidates"
@@ -81,42 +79,35 @@ class Chunk(BaseModel):
     text_hash: str = Field(
         description="SHA-256 hash of normalized text (for dedupe/change detection)"
     )
-    
+
     # Type flags (spec §4.1)
-    kind: ContentKind = Field(
-        description="Content type: code | doc"
-    )
-    lang: str = Field(
-        description="Language: py | md | rst | toml | etc."
-    )
-    
+    kind: ContentKind = Field(description="Content type: code | doc")
+    lang: str = Field(description="Language: py | md | rst | toml | etc.")
+
     # Timestamps (spec §4.1)
-    ingested_at: str = Field(
-        description="ISO8601 timestamp of ingestion"
-    )
-    
+    ingested_at: str = Field(description="ISO8601 timestamp of ingestion")
+
     # Optional metadata (not indexed but stored)
     title: str | None = Field(
-        default=None,
-        description="Extracted title from headings/docstring"
+        default=None, description="Extracted title from headings/docstring"
     )
-    
+
     def to_qdrant_payload(self) -> dict:
         """
         Convert to Qdrant-compatible payload dict.
-        
+
         Excludes None values for cleaner storage.
-        
+
         Returns:
             Dictionary suitable for Qdrant point payload
         """
         return self.model_dump(exclude_none=True)
-    
+
     @classmethod
     def get_indexed_fields(cls) -> dict[str, str]:
         """
         Return fields that should be indexed in Qdrant.
-        
+
         Returns:
             Dict mapping field_name -> index_type (keyword/integer/datetime)
         """

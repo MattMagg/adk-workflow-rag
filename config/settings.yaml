@@ -161,3 +161,98 @@ ingestion:
       allowed_exts: [".py", ".toml"]
       max_file_bytes: 500000
 
+    # =========================================================================
+    # LangChain Ecosystem
+    # =========================================================================
+
+    # LangGraph - Python source code (graph-based agent orchestration)
+    langgraph_python:
+      root: "corpora/langgraph"
+      corpus: "langgraph_python"
+      repo: "langchain-ai/langgraph"
+      kind: "code"  # Uses voyage-code-3
+      ref: "main"
+      include_globs:
+        - "libs/langgraph/**/*.py"
+        - "libs/prebuilt/**/*.py"
+        - "libs/checkpoint/**/*.py"
+        - "libs/checkpoint-postgres/**/*.py"
+        - "libs/checkpoint-sqlite/**/*.py"
+        - "libs/sdk-py/**/*.py"
+        - "README.md"
+        - "AGENTS.md"
+        - "CLAUDE.md"
+      exclude_globs:
+        - "**/.git/**"
+        - "**/__pycache__/**"
+        - "**/tests/**"
+        - "**/bench/**"
+        - "libs/sdk-js/**"
+        - "libs/cli/**"
+        - "**/uv.lock"
+      allowed_exts: [".py", ".md"]
+      max_file_bytes: 500000
+
+    # LangChain - Python source code (core + key partners)
+    langchain_python:
+      root: "corpora/langchain"
+      corpus: "langchain_python"
+      repo: "langchain-ai/langchain"
+      kind: "code"  # Uses voyage-code-3
+      ref: "main"
+      include_globs:
+        - "libs/core/**/*.py"
+        - "libs/langchain/**/*.py"
+        - "libs/text-splitters/**/*.py"
+        - "libs/partners/anthropic/**/*.py"
+        - "libs/partners/openai/**/*.py"
+        - "libs/partners/qdrant/**/*.py"
+        - "README.md"
+        - "AGENTS.md"
+        - "CLAUDE.md"
+      exclude_globs:
+        - "**/.git/**"
+        - "**/__pycache__/**"
+        - "**/tests/**"
+        - "**/scripts/**"
+        - "**/uv.lock"
+      allowed_exts: [".py", ".md"]
+      max_file_bytes: 500000
+
+    # DeepAgents - Documentation (skills, READMEs, guides)
+    deepagents_docs:
+      root: "corpora/deepagents"
+      corpus: "deepagents_docs"
+      repo: "langchain-ai/deepagents"
+      kind: "doc"  # Uses voyage-context-3
+      ref: "main"
+      include_globs:
+        - "README.md"
+        - "libs/*/README.md"
+        - "examples/**/*.md"
+        - "libs/deepagents-cli/deepagents_cli/default_agent_prompt.md"
+      exclude_globs:
+        - "**/.git/**"
+      allowed_exts: [".md"]
+      max_file_bytes: 500000
+
+    # DeepAgents - Python source code
+    deepagents_python:
+      root: "corpora/deepagents"
+      corpus: "deepagents_python"
+      repo: "langchain-ai/deepagents"
+      kind: "code"  # Uses voyage-code-3
+      ref: "main"
+      include_globs:
+        - "libs/deepagents/**/*.py"
+        - "libs/deepagents-cli/**/*.py"
+        - "libs/harbor/**/*.py"
+        - "libs/acp/**/*.py"
+        - "examples/**/*.py"
+      exclude_globs:
+        - "**/.git/**"
+        - "**/__pycache__/**"
+        - "**/tests/**"
+      allowed_exts: [".py"]
+      max_file_bytes: 500000
+

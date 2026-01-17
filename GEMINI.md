@@ -55,6 +55,12 @@ python -m src.grounding.query.query_adk "how to use ToolContext" --sdk adk
 # Query only OpenAI Agents SDK corpora
 python -m src.grounding.query.query_adk "how to create handoffs" --sdk openai
 
+# Query LangChain ecosystem (includes LangGraph + DeepAgents)
+python -m src.grounding.query.query_adk "ChatOpenAI model" --sdk langchain
+
+# Query LangGraph-specific (includes DeepAgents)
+python -m src.grounding.query.query_adk "StateGraph checkpoint" --sdk langgraph
+
 # Query only general agent development docs
 python -m src.grounding.query.query_adk "agent architectures" --sdk general
 ```
@@ -65,6 +71,8 @@ python -m src.grounding.query.query_adk "agent architectures" --sdk general
 |----------|------------------|
 | `--sdk adk` | `adk_docs`, `adk_python` |
 | `--sdk openai` | `openai_agents_docs`, `openai_agents_python` |
+| `--sdk langchain` | `langgraph_python`, `langchain_python`, `deepagents_python`, `deepagents_docs` |
+| `--sdk langgraph` | `langgraph_python`, `deepagents_python`, `deepagents_docs` |
 | `--sdk general` | `agent_dev_docs` |
 
 ### Additional Options

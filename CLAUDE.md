@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Dual-purpose repository: (1) RAG pipeline with Voyage AI embeddings + Qdrant vector DB, and (2) 43 agent-optimized ADK workflows for building agentic systems with Google Agent Development Kit.
 
+The RAG database contains documentation and source code from multiple SDK ecosystems:
+- **Google ADK** - Agent Development Kit documentation and Python source
+- **OpenAI Agents** - OpenAI Agents SDK documentation and Python source
+- **LangChain Ecosystem** - LangGraph, LangChain core, and DeepAgents source code
+- **General** - Agent development guides and notebooks
+
 ## Commands
 
 ```bash
@@ -19,6 +25,12 @@ pytest tests/
 # Query the RAG pipeline
 python -m src.grounding.query.query_adk "your query" --verbose
 python -m src.grounding.query.query_adk "your query" --multi-query --top-k 12
+
+# Query specific SDK groups
+python -m src.grounding.query.query_adk "your query" --sdk adk      # Google ADK
+python -m src.grounding.query.query_adk "your query" --sdk openai   # OpenAI Agents
+python -m src.grounding.query.query_adk "your query" --sdk langchain # LangChain ecosystem
+python -m src.grounding.query.query_adk "your query" --sdk langgraph # LangGraph + DeepAgents
 
 # Pipeline scripts (run in order for fresh setup)
 python -m src.grounding.scripts.00_smoke_test_connections

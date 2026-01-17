@@ -1,5 +1,5 @@
 ---
-description: Query the RAG database for grounding information (supports Google ADK, OpenAI Agents SDK, and general agent docs)
+description: Query the RAG database for grounding information (supports Google ADK, OpenAI Agents SDK, LangChain/LangGraph, and general agent docs)
 ---
 
 # RAG Query Tool
@@ -19,6 +19,12 @@ python -m src.grounding.query.query_adk "how to use ToolContext" --sdk adk
 # Query OpenAI Agents SDK only
 python -m src.grounding.query.query_adk "how to create handoffs" --sdk openai
 
+# Query LangChain ecosystem (includes LangGraph + DeepAgents)
+python -m src.grounding.query.query_adk "ChatOpenAI model" --sdk langchain
+
+# Query LangGraph-specific (includes DeepAgents)
+python -m src.grounding.query.query_adk "StateGraph checkpoint" --sdk langgraph
+
 # Query general agent development docs
 python -m src.grounding.query.query_adk "agent architectures" --sdk general
 ```
@@ -29,6 +35,8 @@ python -m src.grounding.query.query_adk "agent architectures" --sdk general
 |------|------------------|
 | `--sdk adk` | `adk_docs`, `adk_python` |
 | `--sdk openai` | `openai_agents_docs`, `openai_agents_python` |
+| `--sdk langchain` | `langgraph_python`, `langchain_python`, `deepagents_python`, `deepagents_docs` |
+| `--sdk langgraph` | `langgraph_python`, `deepagents_python`, `deepagents_docs` |
 | `--sdk general` | `agent_dev_docs` |
 
 ---
@@ -72,7 +80,7 @@ for r in results["results"]:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--sdk` | none | SDK group: `adk`, `openai`, `general` |
+| `--sdk` | none | SDK group: `adk`, `openai`, `langchain`, `langgraph`, `general` |
 | `--corpus` | all | Filter by specific corpus (repeatable) |
 | `--top-k` | 12 | Number of results |
 | `--mode` | build | Retrieval mode: build, debug, explain, refactor |
@@ -90,6 +98,10 @@ for r in results["results"]:
 | `adk_python` | adk | code | ADK Python source code |
 | `openai_agents_docs` | openai | doc | OpenAI Agents SDK documentation |
 | `openai_agents_python` | openai | code | OpenAI Agents SDK source code |
+| `langgraph_python` | langchain, langgraph | code | LangGraph source code |
+| `langchain_python` | langchain | code | LangChain core + key partners source |
+| `deepagents_docs` | langchain, langgraph | doc | DeepAgents documentation |
+| `deepagents_python` | langchain, langgraph | code | DeepAgents source code |
 | `agent_dev_docs` | general | doc | Agent development PDFs & notebooks |
 
 ---

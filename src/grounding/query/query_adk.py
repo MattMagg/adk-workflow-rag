@@ -43,7 +43,10 @@ try:
     from qdrant_client import QdrantClient
     from qdrant_client.http import models
 except ImportError:
-    print("ERROR: qdrant-client not installed. Run: pip install qdrant-client", file=sys.stderr)
+    print(
+        "ERROR: qdrant-client not installed. Run: pip install qdrant-client",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 try:
@@ -69,16 +72,34 @@ SDK_GROUPS = {
     "adk": ["adk_docs", "adk_python"],
     "openai": ["openai_agents_docs", "openai_agents_python"],
     "general": ["agent_dev_docs"],
+    # LangChain ecosystem
+    "langchain": [
+        "langgraph_python",
+        "langchain_python",
+        "deepagents_python",
+        "deepagents_docs",
+    ],
+    "langgraph": ["langgraph_python", "deepagents_python", "deepagents_docs"],
 }
 
 # All known corpora (for validation)
 ALL_CORPORA = [
-    "adk_docs", "adk_python", "agent_dev_docs",
-    "openai_agents_docs", "openai_agents_python"
+    "adk_docs",
+    "adk_python",
+    "agent_dev_docs",
+    "openai_agents_docs",
+    "openai_agents_python",
+    # LangChain ecosystem
+    "langgraph_python",
+    "langchain_python",
+    "deepagents_docs",
+    "deepagents_python",
 ]
 
 
-def generate_query_variations(original_query: str, num_variations: int = 3) -> List[str]:
+def generate_query_variations(
+    original_query: str, num_variations: int = 3
+) -> List[str]:
     """
     Generate balanced code/docs query perspectives for multi-query expansion.
 
@@ -101,10 +122,12 @@ def generate_query_variations(original_query: str, num_variations: int = 3) -> L
     return queries + templates[:num_variations]
 
 
-def embed_query_dense_docs(query: str, voyage_client: voyageai.Client, settings) -> List[float]:
+def embed_query_dense_docs(
+    query: str, voyage_client: voyageai.Client, settings
+) -> List[float]:
     """
     Embed query with voyage-context-3 for document matching.
-    
+
     NOTE: voyage-context-3 requires the contextualized_embed endpoint.
     """
     result = voyage_client.contextualized_embed(
@@ -112,37 +135,35 @@ def embed_query_dense_docs(query: str, voyage_client: voyageai.Client, settings)
         model=settings.voyage.docs_model,
         input_type="query",
         output_dimension=settings.voyage.output_dimension,
-        output_dtype=settings.voyage.output_dtype
+        output_dtype=settings.voyage.output_dtype,
     )
     return result.results[0].embeddings[0]
 
 
-def embed_query_dense_code(query: str, voyage_client: voyageai.Client, settings) -> List[float]:
+def embed_query_dense_code(
+    query: str, voyage_client: voyageai.Client, settings
+) -> List[float]:
     """Embed query with voyage-code-3 for code matching."""
     result = voyage_client.embed(
         texts=[query],
         model=settings.voyage.code_model,
         input_type="query",
         output_dimension=settings.voyage.output_dimension,
-        output_dtype=settings.voyage.output_dtype
+        output_dtype=settings.voyage.output_dtype,
     )
     return result.embeddings[0]
 
 
-def embed_query_sparse(query: str, sparse_model: SparseTextEmbedding) -> models.SparseVector:
+def embed_query_sparse(
+    query: str, sparse_model: SparseTextEmbedding
+) -> models.SparseVector:
     """Embed query with SPLADE (sparse vector)."""
     embeddings = list(sparse_model.query_embed([query]))
     emb = embeddings[0]
-    return models.SparseVector(
-        indices=list(emb.indices),
-        values=list(emb.values)
-    )
+    return models.SparseVector(indices=list(emb.indices), values=list(emb.values))
 
 
-def reciprocal_rank_fusion(
-    results_lists: List[List[Dict]],
-    k: int = 60
-) -> List[Dict]:
+def reciprocal_rank_fusion(results_lists: List[List[Dict]], k: int = 60) -> List[Dict]:
     """
     Fuse multiple result lists using Reciprocal Rank Fusion.
 
@@ -170,65 +191,62 @@ def reciprocal_rank_fusion(
 
 
 def balance_candidate_pool(
-    candidates: List[Dict],
-    target_size: int,
-    min_per_type: int = 10
+    candidates: List[Dict], target_size: int, min_per_type: int = 10
 ) -> List[Dict]:
     """
     Create a balanced candidate pool BEFORE reranking.
-    
+
     This ensures the reranker sees both docs and code candidates.
     """
     doc_candidates = [c for c in candidates if c.get("kind") == "doc"]
     code_candidates = [c for c in candidates if c.get("kind") == "code"]
-    
+
     # Calculate how many of each to include
     docs_to_take = max(min_per_type, target_size // 2)
     code_to_take = max(min_per_type, target_size // 2)
-    
+
     # Take from each pool
     balanced = []
     balanced.extend(doc_candidates[:docs_to_take])
     balanced.extend(code_candidates[:code_to_take])
-    
+
     # If we still have room and one pool is exhausted, fill from the other
     remaining = target_size - len(balanced)
     if remaining > 0:
-        all_remaining = [c for c in candidates if c["id"] not in {b["id"] for b in balanced}]
+        all_remaining = [
+            c for c in candidates if c["id"] not in {b["id"] for b in balanced}
+        ]
         balanced.extend(all_remaining[:remaining])
-    
+
     return balanced
 
 
 def apply_coverage_gates(
-    candidates: List[Dict],
-    top_k: int,
-    min_docs: int = 3,
-    min_code: int = 3
+    candidates: List[Dict], top_k: int, min_docs: int = 3, min_code: int = 3
 ) -> tuple[List[Dict], List[str]]:
     """
     Apply coverage gates to ensure balanced docs/code mix in final output.
     """
     warnings = []
-    
+
     doc_candidates = [c for c in candidates if c.get("kind") == "doc"]
     code_candidates = [c for c in candidates if c.get("kind") == "code"]
-    
+
     selected = []
     selected_ids = set()
-    
+
     # Force include top min_docs from docs
     for c in doc_candidates[:min_docs]:
         if c["id"] not in selected_ids:
             selected.append(c)
             selected_ids.add(c["id"])
-    
+
     # Force include top min_code from code
     for c in code_candidates[:min_code]:
         if c["id"] not in selected_ids:
             selected.append(c)
             selected_ids.add(c["id"])
-    
+
     # Fill remaining slots by score
     remaining = top_k - len(selected)
     for c in candidates:
@@ -238,17 +256,21 @@ def apply_coverage_gates(
             selected.append(c)
             selected_ids.add(c["id"])
             remaining -= 1
-    
+
     # Sort by score
-    selected.sort(key=lambda x: x.get("rerank_score", x.get("rrf_score", 0)), reverse=True)
-    
+    selected.sort(
+        key=lambda x: x.get("rerank_score", x.get("rrf_score", 0)), reverse=True
+    )
+
     # Check coverage
     final_docs = sum(1 for c in selected if c.get("kind") == "doc")
     final_code = sum(1 for c in selected if c.get("kind") == "code")
-    
+
     if final_docs < min_docs or final_code < min_code:
-        warnings.append(f"Coverage gate: docs={final_docs}, code={final_code} (wanted {min_docs}/{min_code})")
-    
+        warnings.append(
+            f"Coverage gate: docs={final_docs}, code={final_code} (wanted {min_docs}/{min_code})"
+        )
+
     return selected, warnings
 
 
@@ -262,7 +284,7 @@ def search_adk(
     first_stage_k: int = 80,  # Increased from 60
     rerank_candidates: int = 60,  # New: how many to send to reranker
     filters: Optional[Dict[str, Any]] = None,
-    verbose: bool = False
+    verbose: bool = False,
 ) -> Dict[str, Any]:
     """
     Optimal RAG query for ADK grounding with multi-stage retrieval pipeline.
@@ -296,7 +318,9 @@ def search_adk(
     settings = get_settings()
 
     # Initialize clients
-    qdrant = QdrantClient(url=settings.qdrant.url, api_key=settings.qdrant.api_key, timeout=120)
+    qdrant = QdrantClient(
+        url=settings.qdrant.url, api_key=settings.qdrant.api_key, timeout=120
+    )
     voyage = voyageai.Client(api_key=settings.voyage.api_key)
     sparse_model = SparseTextEmbedding(model_name="prithivida/Splade_PP_en_v1")
 
@@ -307,7 +331,7 @@ def search_adk(
         if verbose:
             print(f"\n[1/5] Query Expansion: {len(query_variations)} variations")
             for i, q in enumerate(query_variations):
-                print(f"      {i+1}. {q}")
+                print(f"      {i + 1}. {q}")
     else:
         query_variations = [query]
         if verbose:
@@ -328,17 +352,14 @@ def search_adk(
                                 gte=value.get("gte"),
                                 lte=value.get("lte"),
                                 gt=value.get("gt"),
-                                lt=value.get("lt")
-                            )
+                                lt=value.get("lt"),
+                            ),
                         )
                     )
             elif isinstance(value, list):
                 # Multi-value filter (e.g., corpus in ["adk_docs", "adk_python"])
                 conditions.append(
-                    models.FieldCondition(
-                        key=key,
-                        match=models.MatchAny(any=value)
-                    )
+                    models.FieldCondition(key=key, match=models.MatchAny(any=value))
                 )
             else:
                 conditions.append(
@@ -356,7 +377,7 @@ def search_adk(
         q_dense_docs = embed_query_dense_docs(query_var, voyage, settings)
         q_dense_code = embed_query_dense_code(query_var, voyage, settings)
         q_sparse = embed_query_sparse(query_var, sparse_model)
-        
+
         if i == 0:
             timings["embedding"] = time.time() - t_embed
 
@@ -368,49 +389,53 @@ def search_adk(
                     query=q_dense_docs,
                     using=settings.vectors.dense_docs,
                     limit=first_stage_k,
-                    filter=query_filter
+                    filter=query_filter,
                 ),
                 models.Prefetch(
                     query=q_dense_code,
                     using=settings.vectors.dense_code,
                     limit=first_stage_k,
-                    filter=query_filter
+                    filter=query_filter,
                 ),
                 models.Prefetch(
                     query=q_sparse,
                     using=settings.vectors.sparse_lexical,
                     limit=first_stage_k + 20,
-                    filter=query_filter
+                    filter=query_filter,
                 ),
             ],
             query=models.FusionQuery(fusion=models.Fusion.RRF),
             limit=first_stage_k * 2,  # Get more candidates
-            with_payload=True
+            with_payload=True,
         )
 
         results = []
         for point in search_result.points:
-            results.append({
-                "id": point.id,
-                "text": point.payload.get("text", ""),
-                "corpus": point.payload.get("corpus", ""),
-                "kind": point.payload.get("kind", ""),
-                "repo": point.payload.get("repo", ""),
-                "path": point.payload.get("path", ""),
-                "commit": point.payload.get("commit", ""),
-                "chunk_id": point.payload.get("chunk_id", ""),
-                "start_line": point.payload.get("start_line"),
-                "end_line": point.payload.get("end_line"),
-                "score": point.score if hasattr(point, 'score') else 0,
-                "reranked": False
-            })
+            results.append(
+                {
+                    "id": point.id,
+                    "text": point.payload.get("text", ""),
+                    "corpus": point.payload.get("corpus", ""),
+                    "kind": point.payload.get("kind", ""),
+                    "repo": point.payload.get("repo", ""),
+                    "path": point.payload.get("path", ""),
+                    "commit": point.payload.get("commit", ""),
+                    "chunk_id": point.payload.get("chunk_id", ""),
+                    "start_line": point.payload.get("start_line"),
+                    "end_line": point.payload.get("end_line"),
+                    "score": point.score if hasattr(point, "score") else 0,
+                    "reranked": False,
+                }
+            )
 
         all_results.append(results)
 
         if verbose:
             doc_count = sum(1 for r in results if r.get("kind") == "doc")
             code_count = sum(1 for r in results if r.get("kind") == "code")
-            print(f"\n[2/5] Hybrid Search: Query {i+1}/{len(query_variations)} → {len(results)} results (docs={doc_count}, code={code_count})")
+            print(
+                f"\n[2/5] Hybrid Search: Query {i + 1}/{len(query_variations)} → {len(results)} results (docs={doc_count}, code={code_count})"
+            )
 
     timings["search"] = time.time() - t0 - timings.get("embedding", 0)
 
@@ -429,11 +454,15 @@ def search_adk(
         if verbose:
             doc_count = sum(1 for c in balanced_candidates if c.get("kind") == "doc")
             code_count = sum(1 for c in balanced_candidates if c.get("kind") == "code")
-            print(f"\n[3/5] Candidate Balancing: {len(balanced_candidates)} candidates (docs={doc_count}, code={code_count})")
+            print(
+                f"\n[3/5] Candidate Balancing: {len(balanced_candidates)} candidates (docs={doc_count}, code={code_count})"
+            )
     else:
         balanced_candidates = candidates
         if verbose:
-            print(f"\n[3/5] Candidate Balancing: skipped ({len(candidates)} < {rerank_candidates})")
+            print(
+                f"\n[3/5] Candidate Balancing: skipped ({len(candidates)} < {rerank_candidates})"
+            )
     timings["balancing"] = time.time() - t0
 
     # Stage 4: VoyageAI reranking with large candidate pool
@@ -448,7 +477,7 @@ def search_adk(
             "build": "Rank for correct Google ADK implementation patterns",
             "debug": "Rank for debugging and error resolution",
             "explain": "Rank for explaining ADK concepts",
-            "refactor": "Rank for best practices and refactoring"
+            "refactor": "Rank for best practices and refactoring",
         }
         rerank_query = f"{intent_map.get(mode, intent_map['build'])}. QUERY: {query}"
 
@@ -456,7 +485,9 @@ def search_adk(
             query=rerank_query,
             documents=documents,
             model=settings.voyage.rerank_model,
-            top_k=min(len(documents), rerank_candidates)  # Rerank all balanced candidates
+            top_k=min(
+                len(documents), rerank_candidates
+            ),  # Rerank all balanced candidates
         )
 
         reranked_candidates = []
@@ -482,7 +513,9 @@ def search_adk(
     if verbose:
         doc_count = sum(1 for r in final_results if r.get("kind") == "doc")
         code_count = sum(1 for r in final_results if r.get("kind") == "code")
-        print(f"\n[5/5] Coverage Gates: {len(final_results)} final results (docs={doc_count}, code={code_count})")
+        print(
+            f"\n[5/5] Coverage Gates: {len(final_results)} final results (docs={doc_count}, code={code_count})"
+        )
 
     timings["total"] = time.time() - start_time
 
@@ -504,10 +537,10 @@ def search_adk(
             "multi_query": multi_query,
             "hybrid_search": True,
             "balanced_pool": True,
-            "reranked": rerank
+            "reranked": rerank,
         },
         "timings": timings,
-        "warnings": warnings
+        "warnings": warnings,
     }
 
 
@@ -518,15 +551,30 @@ def main():
     parser = argparse.ArgumentParser(description="Optimal ADK RAG query")
     parser.add_argument("query", help="Search query")
     parser.add_argument("--top-k", type=int, default=12, help="Number of results")
-    parser.add_argument("--mode", choices=["build", "debug", "explain", "refactor"], default="build")
-    parser.add_argument("--multi-query", action="store_true", help="Enable multi-query expansion")
+    parser.add_argument(
+        "--mode", choices=["build", "debug", "explain", "refactor"], default="build"
+    )
+    parser.add_argument(
+        "--multi-query", action="store_true", help="Enable multi-query expansion"
+    )
     parser.add_argument("--no-rerank", action="store_true", help="Disable reranking")
-    parser.add_argument("--first-stage-k", type=int, default=80, help="Candidates per prefetch lane")
-    parser.add_argument("--rerank-candidates", type=int, default=60, help="Candidates to reranker")
-    parser.add_argument("--corpus", action="append", choices=ALL_CORPORA,
-                        help="Filter by corpus (can specify multiple: --corpus adk_docs --corpus adk_python)")
-    parser.add_argument("--sdk", choices=list(SDK_GROUPS.keys()),
-                        help="Filter by SDK group: adk, openai, or general")
+    parser.add_argument(
+        "--first-stage-k", type=int, default=80, help="Candidates per prefetch lane"
+    )
+    parser.add_argument(
+        "--rerank-candidates", type=int, default=60, help="Candidates to reranker"
+    )
+    parser.add_argument(
+        "--corpus",
+        action="append",
+        choices=ALL_CORPORA,
+        help="Filter by corpus (can specify multiple: --corpus adk_docs --corpus adk_python)",
+    )
+    parser.add_argument(
+        "--sdk",
+        choices=list(SDK_GROUPS.keys()),
+        help="Filter by SDK group: adk, openai, or general",
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
@@ -549,38 +597,42 @@ def main():
         first_stage_k=args.first_stage_k,
         rerank_candidates=args.rerank_candidates,
         filters=filters if filters else None,
-        verbose=args.verbose
+        verbose=args.verbose,
     )
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("ADK GROUNDING RETRIEVAL RESULTS")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
     print(f"\nQuery: {results['query']}")
     print(f"Mode: {results['mode']}")
-    print(f"Pipeline: Multi-query={results['pipeline']['multi_query']}, "
-          f"Balanced={results['pipeline']['balanced_pool']}, "
-          f"Reranked={results['pipeline']['reranked']}")
+    print(
+        f"Pipeline: Multi-query={results['pipeline']['multi_query']}, "
+        f"Balanced={results['pipeline']['balanced_pool']}, "
+        f"Reranked={results['pipeline']['reranked']}"
+    )
     print(f"Results: {results['count']}")
     # Display coverage for all corpora that have results
-    coverage_parts = [f"{k}={v}" for k, v in results['coverage'].items()]
+    coverage_parts = [f"{k}={v}" for k, v in results["coverage"].items()]
     print(f"Coverage: {', '.join(coverage_parts) if coverage_parts else 'none'}")
-    
-    if results['warnings']:
+
+    if results["warnings"]:
         print(f"Warnings: {results['warnings']}")
 
     print(f"\nTimings:")
-    for stage, duration in results['timings'].items():
+    for stage, duration in results["timings"].items():
         print(f"  {stage}: {duration:.3f}s")
 
-    print(f"\n{'-'*80}\n")
+    print(f"\n{'-' * 80}\n")
 
-    for i, result in enumerate(results['results'], 1):
-        score = result.get('rerank_score', result.get('rrf_score', result.get('score', 0)))
+    for i, result in enumerate(results["results"], 1):
+        score = result.get(
+            "rerank_score", result.get("rrf_score", result.get("score", 0))
+        )
         print(f"[{i}] Score: {score:.4f} | {result['corpus']} | {result['kind']}")
-        if result.get('rrf_score') and result.get('reranked'):
+        if result.get("rrf_score") and result.get("reranked"):
             print(f"    RRF Score: {result['rrf_score']:.4f}")
         print(f"    Path: {result['path']}")
-        if result.get('start_line'):
+        if result.get("start_line"):
             print(f"    Lines: {result['start_line']}-{result['end_line']}")
         print(f"    Text: {result['text'][:200]}...")
         print()
