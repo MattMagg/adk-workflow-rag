@@ -30,6 +30,8 @@ from fastmcp import FastMCP
 # Import the search function and corpus groups from grounding pipeline
 from src.grounding.query.query import CORPUS_GROUPS, search as grounding_search
 from src.grounding.config import get_settings
+from src.grounding.clients.qdrant_client import get_qdrant_client
+from src.grounding.clients.voyage_client import get_voyage_client
 
 # Create the FastMCP server instance
 mcp = FastMCP("rag-server")
@@ -582,9 +584,137 @@ async def rag_diagnose() -> dict[str, Any]:
     Verifies connectivity to Qdrant and Voyage AI, checks collection schema,
     and reports on system health. Use when troubleshooting issues.
     """
+    warnings: list[str] = []
+    checks: dict[str, dict[str, Any]] = {}
+
+    loop = asyncio.get_running_loop()
+
+    # Check settings availability
+    try:
+        settings = get_settings()
+        corpora_count = len(settings.ingestion.corpora)
+        checks["settings"] = {
+            "status": "ok",
+            "corpora_count": corpora_count,
+            "collection_configured": settings.qdrant.collection,
+        }
+    except Exception as e:
+        checks["settings"] = {
+            "status": "error",
+            "error": str(e),
+        }
+        # Can't continue without settings
+        return {
+            "overall_status": "unhealthy",
+            "checks": checks,
+            "warnings": [f"Settings load failed: {e}"],
+        }
+
+    # Check Qdrant connectivity
+    try:
+        qdrant = await loop.run_in_executor(None, get_qdrant_client)
+
+        # Healthcheck
+        is_healthy = await loop.run_in_executor(None, qdrant.healthcheck)
+        if not is_healthy:
+            checks["qdrant"] = {
+                "status": "error",
+                "error": "Healthcheck failed - cannot connect to Qdrant",
+            }
+        else:
+            # Check collection exists and get info
+            collection_name = qdrant.collection_name
+            collection_exists = await loop.run_in_executor(
+                None, qdrant.collection_exists, collection_name
+            )
+
+            if collection_exists:
+                collection_info = await loop.run_in_executor(
+                    None, qdrant.get_collection_info, collection_name
+                )
+                points_count = (
+                    collection_info.points_count
+                    if collection_info else 0
+                )
+                vectors_count = (
+                    collection_info.vectors_count
+                    if collection_info else 0
+                )
+                checks["qdrant"] = {
+                    "status": "ok",
+                    "collection": collection_name,
+                    "points_count": points_count,
+                    "vectors_count": vectors_count,
+                }
+            else:
+                checks["qdrant"] = {
+                    "status": "warning",
+                    "collection": collection_name,
+                    "error": f"Collection '{collection_name}' does not exist",
+                }
+                warnings.append(
+                    f"Qdrant collection '{collection_name}' not found - "
+                    "run ingestion to create it"
+                )
+    except Exception as e:
+        checks["qdrant"] = {
+            "status": "error",
+            "error": str(e),
+        }
+
+    # Check Voyage AI connectivity
+    try:
+        voyage = await loop.run_in_executor(None, get_voyage_client)
+
+        # Try a minimal embedding to verify API connectivity
+        # Use a small test to avoid wasting credits
+        test_result = await loop.run_in_executor(
+            None,
+            lambda: voyage.embed_code(["test"], input_type="query")
+        )
+
+        if test_result and len(test_result) > 0:
+            checks["voyage"] = {
+                "status": "ok",
+                "code_model": voyage._code_model,
+                "docs_model": voyage._docs_model,
+                "rerank_model": voyage._rerank_model,
+                "embedding_dimension": len(test_result[0]),
+            }
+        else:
+            checks["voyage"] = {
+                "status": "error",
+                "error": "Empty embedding result from Voyage API",
+            }
+    except Exception as e:
+        error_str = str(e)
+        # Check for common API key issues
+        if "401" in error_str or "unauthorized" in error_str.lower():
+            error_msg = "Invalid or expired Voyage API key"
+        elif "429" in error_str or "rate" in error_str.lower():
+            error_msg = "Voyage API rate limit exceeded"
+        else:
+            error_msg = error_str
+
+        checks["voyage"] = {
+            "status": "error",
+            "error": error_msg,
+        }
+
+    # Determine overall status
+    statuses = [check.get("status", "unknown") for check in checks.values()]
+
+    if all(s == "ok" for s in statuses):
+        overall_status = "healthy"
+    elif any(s == "error" for s in statuses):
+        overall_status = "unhealthy"
+    else:
+        overall_status = "degraded"
+
     return {
-        "status": "not_implemented",
-        "tool": "rag_diagnose",
+        "overall_status": overall_status,
+        "checks": checks,
+        "warnings": warnings,
     }
 
 
