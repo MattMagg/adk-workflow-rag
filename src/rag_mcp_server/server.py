@@ -22,12 +22,129 @@ Related files:
 
 from __future__ import annotations
 
-from typing import Annotated
+import asyncio
+from typing import Annotated, Any
 
 from fastmcp import FastMCP
 
+# Import the search function and corpus groups from grounding pipeline
+from src.grounding.query.query import CORPUS_GROUPS, search as grounding_search
+
 # Create the FastMCP server instance
 mcp = FastMCP("rag-server")
+
+
+# =============================================================================
+# Preset Configurations
+# =============================================================================
+
+# Preset parameter mappings for different retrieval strategies
+RETRIEVAL_PRESETS: dict[str, dict[str, Any]] = {
+    "balanced": {
+        # Default balanced retrieval
+        "first_stage_k": 80,
+        "rerank_candidates": 60,
+        "rerank": True,
+        "expand_context": True,
+    },
+    "precision": {
+        # High precision: more candidates, stricter threshold
+        "first_stage_k": 100,
+        "rerank_candidates": 80,
+        "rerank": True,
+        "score_threshold": 0.3,
+        "expand_context": True,
+    },
+    "recall": {
+        # High recall: more results, RRF fusion
+        "first_stage_k": 120,
+        "rerank_candidates": 100,
+        "rerank": True,
+        "fusion_method": "rrf",
+        "expand_context": True,
+    },
+    "speed": {
+        # Fast retrieval: skip reranking, no expansion
+        "first_stage_k": 60,
+        "rerank_candidates": 40,
+        "rerank": False,
+        "expand_context": False,
+    },
+}
+
+
+def _transform_result_to_evidence(result: dict[str, Any]) -> dict[str, Any]:
+    """
+    Transform a search result to the Evidence Pack format.
+
+    Converts internal result format to agent-consumable evidence format.
+    """
+    # Build lines string from start_line and end_line
+    start_line = result.get("start_line")
+    end_line = result.get("end_line")
+    if start_line is not None and end_line is not None:
+        lines = f"{start_line}-{end_line}"
+    elif start_line is not None:
+        lines = str(start_line)
+    else:
+        lines = ""
+
+    # Determine if this is an expanded chunk
+    is_expanded = "expanded_from" in result
+
+    # Get score (prefer rerank_score, fall back to rrf_score, then score)
+    # Use explicit None checks to handle 0.0 scores correctly
+    score = result.get("rerank_score")
+    if score is None:
+        score = result.get("rrf_score")
+    if score is None:
+        score = result.get("score", 0.0)
+
+    return {
+        "id": str(result.get("id", "")),
+        "corpus": result.get("corpus", ""),
+        "kind": result.get("kind", ""),
+        "path": result.get("path", ""),
+        "lines": lines,
+        "text": result.get("text", ""),
+        "score": score,
+        "title": result.get("title"),  # May be None
+        "is_expanded": is_expanded,
+    }
+
+
+def _build_corpus_filter(
+    sdk: str | None,
+    corpus: list[str] | None,
+    kind: str | None,
+) -> dict[str, Any] | None:
+    """
+    Build filter dict from SDK, corpus, and kind parameters.
+
+    Args:
+        sdk: SDK group name (e.g., "adk", "openai")
+        corpus: List of specific corpus names
+        kind: Content type ("doc" or "code")
+
+    Returns:
+        Filter dict for search(), or None if no filters
+    """
+    filters: dict[str, Any] = {}
+
+    # SDK takes precedence over corpus
+    if sdk and sdk in CORPUS_GROUPS:
+        filters["corpus"] = CORPUS_GROUPS[sdk]
+    elif corpus:
+        if len(corpus) == 1:
+            filters["corpus"] = corpus[0]
+        else:
+            filters["corpus"] = corpus
+
+    # Add kind filter if specified
+    if kind in ("doc", "code"):
+        filters["kind"] = kind
+
+    return filters if filters else None
 
 
 # =============================================================================
@@ -42,30 +159,133 @@ async def rag_search(
         str | None,
         "Filter by SDK: 'adk', 'openai', 'langchain', 'langgraph', 'anthropic', 'crewai'",
     ] = None,
-    top_k: Annotated[int, "Number of results to return"] = 10,
+    corpus: Annotated[
+        list[str] | None,
+        "Filter by specific corpus names (e.g., ['adk_docs', 'adk_python'])",
+    ] = None,
+    kind: Annotated[
+        str | None,
+        "Filter by content type: 'doc' for documentation, 'code' for source code",
+    ] = None,
+    preset: Annotated[
+        str,
+        "Retrieval preset: 'balanced' (default), 'precision', 'recall', 'speed'",
+    ] = "balanced",
+    top_k: Annotated[int, "Number of results to return"] = 12,
+    mode: Annotated[
+        str,
+        "Search intent: 'build' (implementation), 'debug', 'explain', 'refactor'",
+    ] = "build",
     expand_context: Annotated[
         bool, "Whether to fetch adjacent chunks for context"
     ] = True,
-) -> dict:
+    verbose: Annotated[bool, "Include timing and debug info in response"] = False,
+) -> dict[str, Any]:
     """
     Full RAG search with reranking and context expansion.
 
-    Performs hybrid search across documentation and code, applies Voyage AI
-    reranking for relevance, and optionally expands results with adjacent
-    chunks for better context.
+    Performs hybrid search across documentation and code using Voyage AI
+    embeddings, applies cross-encoder reranking for relevance, and optionally
+    expands results with adjacent chunks for better context.
+
+    Returns an Evidence Pack with search results, coverage stats, and metadata.
 
     Use this for comprehensive searches where quality matters more than speed.
+    For faster searches without reranking, use rag_search_quick.
     """
-    return {
-        "status": "not_implemented",
-        "tool": "rag_search",
-        "params": {
+    warnings: list[str] = []
+
+    # Validate preset
+    if preset not in RETRIEVAL_PRESETS:
+        warnings.append(f"Unknown preset '{preset}', using 'balanced'")
+        preset = "balanced"
+
+    # Validate SDK
+    if sdk and sdk not in CORPUS_GROUPS:
+        valid_sdks = list(CORPUS_GROUPS.keys())
+        warnings.append(f"Unknown SDK '{sdk}', valid options: {valid_sdks}")
+        sdk = None
+
+    # Validate mode
+    valid_modes = ("build", "debug", "explain", "refactor")
+    if mode not in valid_modes:
+        warnings.append(f"Unknown mode '{mode}', using 'build'")
+        mode = "build"
+
+    # Build filters
+    filters = _build_corpus_filter(sdk, corpus, kind)
+
+    # Get preset parameters
+    preset_params = RETRIEVAL_PRESETS[preset].copy()
+
+    # Override expand_context from explicit parameter
+    preset_params["expand_context"] = expand_context
+
+    try:
+        # Run sync search in thread pool to avoid blocking
+        loop = asyncio.get_running_loop()
+        raw_result = await loop.run_in_executor(
+            None,
+            lambda: grounding_search(
+                query=query,
+                top_k=top_k,
+                mode=mode,  # type: ignore
+                filters=filters,
+                verbose=verbose,
+                **preset_params,
+            ),
+        )
+
+        # Transform results to Evidence Pack format
+        evidence = [
+            _transform_result_to_evidence(r)
+            for r in raw_result.get("results", [])
+        ]
+
+        # Build coverage info
+        coverage_raw = raw_result.get("coverage", {})
+        doc_count = sum(1 for e in evidence if e["kind"] == "doc")
+        code_count = sum(1 for e in evidence if e["kind"] == "code")
+        corpora_list = list(coverage_raw.keys())
+
+        # Combine warnings
+        all_warnings = warnings + raw_result.get("warnings", [])
+
+        # Build response
+        response: dict[str, Any] = {
             "query": query,
-            "sdk": sdk,
-            "top_k": top_k,
-            "expand_context": expand_context,
-        },
-    }
+            "count": len(evidence),
+            "evidence": evidence,
+            "coverage": {
+                "doc_count": doc_count,
+                "code_count": code_count,
+                "corpora": corpora_list,
+            },
+            "warnings": all_warnings,
+        }
+
+        # Include timing if verbose
+        if verbose:
+            response["timing"] = raw_result.get("timings", {})
+            response["pipeline"] = raw_result.get("pipeline", {})
+
+        return response
+
+    except Exception as e:
+        # Return error dict instead of raising
+        return {
+            "query": query,
+            "count": 0,
+            "evidence": [],
+            "coverage": {
+                "doc_count": 0,
+                "code_count": 0,
+                "corpora": [],
+            },
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "warnings": warnings + [f"Search failed: {e}"],
+        }
 
 
 @mcp.tool
