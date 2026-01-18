@@ -29,6 +29,7 @@ from fastmcp import FastMCP
 
 # Import the search function and corpus groups from grounding pipeline
 from src.grounding.query.query import CORPUS_GROUPS, search as grounding_search
+from src.grounding.config import get_settings
 
 # Create the FastMCP server instance
 mcp = FastMCP("rag-server")
@@ -405,7 +406,7 @@ async def rag_ingest_start(
     corpus: Annotated[
         str | None, "Corpus name to ingest, or None to ingest all corpora"
     ] = None,
-) -> dict:
+) -> dict[str, Any]:
     """
     Start background corpus ingestion.
 
@@ -428,7 +429,7 @@ async def rag_ingest_status(
     job_id: Annotated[
         str | None, "Job ID from rag_ingest_start, or None for all jobs"
     ] = None,
-) -> dict:
+) -> dict[str, Any]:
     """
     Check ingestion job status.
 
@@ -450,23 +451,71 @@ async def rag_ingest_status(
 
 
 @mcp.tool
-async def rag_corpus_list() -> dict:
+async def rag_corpus_list() -> dict[str, Any]:
     """
     List all available corpora.
 
     Returns the names and basic info for all configured corpora that can
     be searched or ingested. Useful for discovering what content is available.
+
+    Returns:
+        corpora: List of corpus objects with name, kind, and sdk_groups
+        sdk_groups: Mapping of SDK group names to their corpus lists
+        warnings: Any configuration issues detected
     """
+    warnings: list[str] = []
+
+    try:
+        settings = get_settings()
+    except Exception as e:
+        return {
+            "corpora": [],
+            "sdk_groups": {},
+            "warnings": [f"Failed to load settings: {e}"],
+        }
+
+    # Build reverse lookup: corpus_name -> list of sdk_groups it belongs to
+    corpus_to_groups: dict[str, list[str]] = {}
+    for group_name, corpus_list in CORPUS_GROUPS.items():
+        for corpus_name in corpus_list:
+            if corpus_name not in corpus_to_groups:
+                corpus_to_groups[corpus_name] = []
+            corpus_to_groups[corpus_name].append(group_name)
+
+    # Build corpus list from settings
+    corpora: list[dict[str, Any]] = []
+    for corpus_name, corpus_config in settings.ingestion.corpora.items():
+        corpus_info = {
+            "name": corpus_name,
+            "kind": corpus_config.kind,
+            "sdk_groups": corpus_to_groups.get(corpus_name, []),
+        }
+        corpora.append(corpus_info)
+
+        # Warn if corpus not in any SDK group
+        if not corpus_info["sdk_groups"]:
+            warnings.append(f"Corpus '{corpus_name}' is not in any SDK group")
+
+    # Check for SDK groups referencing non-existent corpora
+    configured_corpora = set(settings.ingestion.corpora.keys())
+    for group_name, corpus_list in CORPUS_GROUPS.items():
+        for corpus_name in corpus_list:
+            if corpus_name not in configured_corpora:
+                warnings.append(
+                    f"SDK group '{group_name}' references non-existent corpus '{corpus_name}'"
+                )
+
     return {
-        "status": "not_implemented",
-        "tool": "rag_corpus_list",
+        "corpora": corpora,
+        "sdk_groups": dict(CORPUS_GROUPS),
+        "warnings": warnings,
     }
 
 
 @mcp.tool
 async def rag_corpus_info(
     corpus: Annotated[str, "Name of the corpus to get info about"],
-) -> dict:
+) -> dict[str, Any]:
     """
     Get detailed corpus information.
 
@@ -488,7 +537,7 @@ async def rag_corpus_info(
 
 
 @mcp.tool
-async def rag_diagnose() -> dict:
+async def rag_diagnose() -> dict[str, Any]:
     """
     Run diagnostic checks on the RAG platform.
 
@@ -506,7 +555,7 @@ async def rag_config_show(
     include_secrets: Annotated[
         bool, "Whether to include API keys (masked) in output"
     ] = False,
-) -> dict:
+) -> dict[str, Any]:
     """
     Display current RAG configuration.
 
