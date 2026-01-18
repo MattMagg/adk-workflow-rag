@@ -56,16 +56,16 @@ python -m src.grounding.scripts.03_ingest_corpus --corpus adk_docs
 
 ```bash
 # Query Google ADK
-python -m src.grounding.query.query_adk "How to implement multi-agent orchestration?" --sdk adk
+python -m src.grounding.query.query "How to implement multi-agent orchestration?" --sdk adk
 
 # Query OpenAI Agents SDK
-python -m src.grounding.query.query_adk "How to create handoffs?" --sdk openai
+python -m src.grounding.query.query "How to create handoffs?" --sdk openai
 
 # Query LangChain ecosystem
-python -m src.grounding.query.query_adk "How to use LangGraph checkpoints?" --sdk langchain
+python -m src.grounding.query.query "How to use LangGraph checkpoints?" --sdk langchain
 
 # With verbose output
-python -m src.grounding.query.query_adk "your query" --verbose --multi-query
+python -m src.grounding.query.query "your query" --verbose --multi-query
 ```
 
 ---
@@ -193,7 +193,7 @@ SourceCorpus = Literal[
 
 ### Step 4: Update Query Module
 
-Edit `src/grounding/query/query_adk.py`:
+Edit `src/grounding/query/query.py`:
 
 ```python
 # Add to ALL_CORPORA list
@@ -202,8 +202,8 @@ ALL_CORPORA = [
     "your_corpus_name",
 ]
 
-# Optionally add to SDK_GROUPS for --sdk filtering
-SDK_GROUPS = {
+# Optionally add to CORPUS_GROUPS for --sdk filtering
+CORPUS_GROUPS = {
     # ... existing groups ...
     "your_sdk": ["your_corpus_name"],
 }
@@ -276,11 +276,13 @@ voyage:
   rerank_model: "rerank-2.5"
 
 retrieval_defaults:
-  fusion: "rrf"                    # Reciprocal Rank Fusion
-  prefetch_limit_dense: 80         # Candidates per dense search
-  prefetch_limit_sparse: 120       # Candidates from sparse search
-  final_limit: 40                  # Candidates sent to reranker
-  rerank_top_k: 12                 # Final results returned
+  fusion_method: "dbsf"            # "dbsf" (Distribution-Based) or "rrf" (Reciprocal Rank)
+  score_threshold: 0.0             # Filter results below this score (0 = disabled)
+  top_k: 12                        # Final number of results
+  first_stage_k: 80                # Candidates per prefetch lane
+  rerank_candidates: 60            # Candidates sent to reranker
+  group_by: "path"                 # Deduplicate by file path (one best chunk per file)
+  group_size: 1                    # Max results per group
 ```
 
 Environment variable substitution (`${VAR}`) is supported throughout.
@@ -297,7 +299,7 @@ Every query executes **3 parallel searches**:
 | Dense Code | `dense_code` | `voyage-code-3` | Semantic match for code |
 | Sparse | `sparse_lexical` | SPLADE++ | Exact keyword/identifier match |
 
-Results are **fused server-side** using Reciprocal Rank Fusion (RRF), then **reranked** with `rerank-2.5`.
+Results are **fused server-side** using Distribution-Based Score Fusion (DBSF) by default, or Reciprocal Rank Fusion (RRF), then **reranked** with `rerank-2.5`. Results are **deduplicated** by file path to ensure one best chunk per source file.
 
 ### Coverage Balancing
 

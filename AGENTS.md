@@ -41,16 +41,16 @@ python -m src.grounding.scripts.03_ingest_corpus --corpus adk_docs  # Single cor
 
 ```bash
 # Basic query
-python -m src.grounding.query.query_adk "your query"
+python -m src.grounding.query.query "your query"
 
 # SDK-specific queries
-python -m src.grounding.query.query_adk "query" --sdk adk       # Google ADK
-python -m src.grounding.query.query_adk "query" --sdk openai    # OpenAI Agents
-python -m src.grounding.query.query_adk "query" --sdk langchain # LangChain ecosystem
-python -m src.grounding.query.query_adk "query" --sdk langgraph # LangGraph + DeepAgents
+python -m src.grounding.query.query "query" --sdk adk       # Google ADK
+python -m src.grounding.query.query "query" --sdk openai    # OpenAI Agents
+python -m src.grounding.query.query "query" --sdk langchain # LangChain ecosystem
+python -m src.grounding.query.query "query" --sdk langgraph # LangGraph + DeepAgents
 
 # Additional options
-python -m src.grounding.query.query_adk "query" --verbose --multi-query --top-k 12
+python -m src.grounding.query.query "query" --verbose --multi-query --top-k 12
 ```
 
 ## Code Style Guidelines
@@ -219,7 +219,7 @@ src/grounding/
     clients/            # API client wrappers (Qdrant, Voyage, FastEmbed)
     contracts/          # Pydantic models (Chunk, Document, IDs)
     chunkers/           # Content chunkers (markdown, python_code)
-    query/              # Query pipeline (search_adk)
+    query/              # Query pipeline (search)
     scripts/            # CLI scripts (00-04)
     util/               # Helpers (hashing, time, fs_walk)
 tests/                  # pytest tests

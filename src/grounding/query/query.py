@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Optimal ADK Grounding Query Script
+Optimal RAG Grounding Query Script
 
 Multi-Stage Retrieval Pipeline:
 1. Multi-Query Expansion (optional, off by default for speed)
@@ -10,7 +10,7 @@ Multi-Stage Retrieval Pipeline:
 2. Hybrid Search (Dense Docs + Dense Code + Sparse)
    - Dense: semantic understanding via Voyage AI
    - Sparse: keyword/lexical matching via SPLADE
-   - RRF fusion built into Qdrant
+   - RRF/DBSF fusion built into Qdrant
 
 3. Coverage-Aware Candidate Pool
    - Ensures balanced code/docs mix BEFORE reranking
@@ -21,16 +21,16 @@ Multi-Stage Retrieval Pipeline:
    - Large candidate pool (60+) for best results
 
 Usage:
-    from src.grounding.query.query_adk import search_adk
+    from src.grounding.query.query import search
 
-    results = search_adk(
+    results = search(
         query="how to use tool context",
         top_k=12
     )
 
 Command line:
-    python -m src.grounding.query.query_adk "how to use tool context" --top-k 12
-    python -m src.grounding.query.query_adk "LoopAgent" --multi-query --verbose
+    python -m src.grounding.query.query "how to use tool context" --top-k 12
+    python -m src.grounding.query.query "LoopAgent" --multi-query --verbose
 """
 
 import os
@@ -67,8 +67,36 @@ from src.grounding.config import get_settings
 # Type aliases
 RetrievalMode = Literal["build", "debug", "explain", "refactor"]
 
-# SDK groupings for convenient filtering
-SDK_GROUPS = {
+# Client cache for performance (avoid re-initialization)
+_client_cache: Optional[Dict[str, Any]] = None
+
+
+def _get_clients() -> Dict[str, Any]:
+    """
+    Get cached clients or initialize them if not cached.
+
+    Returns a dict with: qdrant, voyage, sparse_model
+    """
+    global _client_cache
+    if _client_cache is None:
+        settings = get_settings()
+        _client_cache = {
+            "qdrant": QdrantClient(
+                url=settings.qdrant.url, api_key=settings.qdrant.api_key, timeout=120
+            ),
+            "voyage": voyageai.Client(api_key=settings.voyage.api_key),
+            "sparse_model": SparseTextEmbedding(model_name="prithivida/Splade_PP_en_v1"),
+        }
+    return _client_cache
+
+
+def _clear_client_cache():
+    """Clear client cache (useful for testing or config changes)."""
+    global _client_cache
+    _client_cache = None
+
+# Corpus groupings for convenient filtering
+CORPUS_GROUPS = {
     "adk": ["adk_docs", "adk_python"],
     "openai": ["openai_agents_docs", "openai_agents_python"],
     "general": ["agent_dev_docs"],
@@ -274,24 +302,26 @@ def apply_coverage_gates(
     return selected, warnings
 
 
-def search_adk(
+def search(
     query: str,
-    top_k: int = 12,
+    top_k: Optional[int] = None,  # None = use config
     mode: RetrievalMode = "build",
     multi_query: bool = False,  # Off by default for speed
     num_query_variations: int = 3,
     rerank: bool = True,
-    first_stage_k: int = 80,  # Increased from 60
-    rerank_candidates: int = 60,  # New: how many to send to reranker
+    first_stage_k: Optional[int] = None,  # None = use config
+    rerank_candidates: Optional[int] = None,  # None = use config
+    fusion_method: Optional[str] = None,  # None = use config
+    score_threshold: Optional[float] = None,  # None = use config
     filters: Optional[Dict[str, Any]] = None,
     verbose: bool = False,
 ) -> Dict[str, Any]:
     """
-    Optimal RAG query for ADK grounding with multi-stage retrieval pipeline.
+    Optimal RAG query with multi-stage retrieval pipeline.
 
     Pipeline:
     1. Multi-query expansion (optional, off by default)
-    2. Hybrid search (dense docs + dense code + sparse with RRF)
+    2. Hybrid search (dense docs + dense code + sparse with configurable fusion)
     3. Coverage-aware candidate balancing
     4. VoyageAI reranking with large candidate pool
     5. Coverage gates for final selection
@@ -305,6 +335,8 @@ def search_adk(
         rerank: Enable VoyageAI reranking (default: True)
         first_stage_k: Candidates per prefetch lane (default: 80)
         rerank_candidates: Candidates to send to reranker (default: 60)
+        fusion_method: Fusion strategy - "dbsf" (default) or "rrf"
+        score_threshold: Filter results below this score (0 = disabled)
         filters: Payload filters (e.g., {"corpus": "adk_docs"})
         verbose: Print debug info
 
@@ -317,12 +349,39 @@ def search_adk(
 
     settings = get_settings()
 
-    # Initialize clients
-    qdrant = QdrantClient(
-        url=settings.qdrant.url, api_key=settings.qdrant.api_key, timeout=120
+    # Load defaults from config for parameters not explicitly provided
+    top_k = top_k if top_k is not None else settings.retrieval_defaults.top_k
+    first_stage_k = (
+        first_stage_k if first_stage_k is not None else settings.retrieval_defaults.first_stage_k
     )
-    voyage = voyageai.Client(api_key=settings.voyage.api_key)
-    sparse_model = SparseTextEmbedding(model_name="prithivida/Splade_PP_en_v1")
+    rerank_candidates = (
+        rerank_candidates
+        if rerank_candidates is not None
+        else settings.retrieval_defaults.rerank_candidates
+    )
+    fusion_method = (
+        fusion_method if fusion_method is not None else settings.retrieval_defaults.fusion_method
+    )
+    score_threshold = (
+        score_threshold
+        if score_threshold is not None
+        else settings.retrieval_defaults.score_threshold
+    )
+
+    # Map fusion method string to Fusion enum
+    fusion_map = {
+        "dbsf": models.Fusion.DBSF,
+        "rrf": models.Fusion.RRF,
+    }
+    fusion_enum = fusion_map.get(fusion_method.lower(), models.Fusion.DBSF)
+    if fusion_method.lower() not in fusion_map:
+        warnings.append(f"Unknown fusion method '{fusion_method}', defaulting to DBSF")
+
+    # Get cached clients (or initialize if not cached)
+    clients = _get_clients()
+    qdrant = clients["qdrant"]
+    voyage = clients["voyage"]
+    sparse_model = clients["sparse_model"]
 
     # Stage 1: Multi-query expansion (optional)
     t0 = time.time()
@@ -376,57 +435,77 @@ def search_adk(
         t_embed = time.time()
         q_dense_docs = embed_query_dense_docs(query_var, voyage, settings)
         q_dense_code = embed_query_dense_code(query_var, voyage, settings)
-        q_sparse = embed_query_sparse(query_var, sparse_model)
+
+        # Try sparse embedding with fallback
+        q_sparse = None
+        try:
+            q_sparse = embed_query_sparse(query_var, sparse_model)
+        except Exception as e:
+            if i == 0:  # Only warn once
+                warnings.append(f"sparse_unavailable: {str(e)}")
+            # Continue without sparse - will only use dense vectors
 
         if i == 0:
             timings["embedding"] = time.time() - t_embed
 
-        # Hybrid search with RRF fusion - larger candidate pool
-        search_result = qdrant.query_points(
-            collection_name=settings.qdrant.collection,
-            prefetch=[
-                models.Prefetch(
-                    query=q_dense_docs,
-                    using=settings.vectors.dense_docs,
-                    limit=first_stage_k,
-                    filter=query_filter,
-                ),
-                models.Prefetch(
-                    query=q_dense_code,
-                    using=settings.vectors.dense_code,
-                    limit=first_stage_k,
-                    filter=query_filter,
-                ),
+        # Build prefetch list - conditionally include sparse
+        prefetch_list = [
+            models.Prefetch(
+                query=q_dense_docs,
+                using=settings.vectors.dense_docs,
+                limit=first_stage_k,
+                filter=query_filter,
+            ),
+            models.Prefetch(
+                query=q_dense_code,
+                using=settings.vectors.dense_code,
+                limit=first_stage_k,
+                filter=query_filter,
+            ),
+        ]
+
+        if q_sparse is not None:
+            prefetch_list.append(
                 models.Prefetch(
                     query=q_sparse,
                     using=settings.vectors.sparse_lexical,
                     limit=first_stage_k + 20,
                     filter=query_filter,
-                ),
-            ],
-            query=models.FusionQuery(fusion=models.Fusion.RRF),
-            limit=first_stage_k * 2,  # Get more candidates
+                )
+            )
+
+        # Hybrid search with configurable fusion - use query_points_groups for deduplication
+        search_result = qdrant.query_points_groups(
+            collection_name=settings.qdrant.collection,
+            prefetch=prefetch_list,
+            query=models.FusionQuery(fusion=fusion_enum),
+            group_by="path",  # One best chunk per source file
+            group_size=1,  # Only the best chunk per file
+            limit=first_stage_k * 2,  # Get more candidate groups
             with_payload=True,
+            score_threshold=score_threshold if score_threshold > 0 else None,
         )
 
+        # Process grouped results - extract best hit from each group
         results = []
-        for point in search_result.points:
-            results.append(
-                {
-                    "id": point.id,
-                    "text": point.payload.get("text", ""),
-                    "corpus": point.payload.get("corpus", ""),
-                    "kind": point.payload.get("kind", ""),
-                    "repo": point.payload.get("repo", ""),
-                    "path": point.payload.get("path", ""),
-                    "commit": point.payload.get("commit", ""),
-                    "chunk_id": point.payload.get("chunk_id", ""),
-                    "start_line": point.payload.get("start_line"),
-                    "end_line": point.payload.get("end_line"),
-                    "score": point.score if hasattr(point, "score") else 0,
-                    "reranked": False,
-                }
-            )
+        for group in search_result.groups:
+            for hit in group.hits:
+                results.append(
+                    {
+                        "id": hit.id,
+                        "text": hit.payload.get("text", ""),
+                        "corpus": hit.payload.get("corpus", ""),
+                        "kind": hit.payload.get("kind", ""),
+                        "repo": hit.payload.get("repo", ""),
+                        "path": hit.payload.get("path", ""),
+                        "commit": hit.payload.get("commit", ""),
+                        "chunk_id": hit.payload.get("chunk_id", ""),
+                        "start_line": hit.payload.get("start_line"),
+                        "end_line": hit.payload.get("end_line"),
+                        "score": hit.score,
+                        "reranked": False,
+                    }
+                )
 
         all_results.append(results)
 
@@ -468,39 +547,46 @@ def search_adk(
     # Stage 4: VoyageAI reranking with large candidate pool
     t0 = time.time()
     if rerank and len(balanced_candidates) > 0:
-        documents = []
-        for c in balanced_candidates:
-            doc_str = f"SOURCE: {c['corpus']} | PATH: {c['path']}\n\n{c['text']}"
-            documents.append(doc_str)
+        try:
+            documents = []
+            for c in balanced_candidates:
+                doc_str = f"SOURCE: {c['corpus']} | PATH: {c['path']}\n\n{c['text']}"
+                documents.append(doc_str)
 
-        intent_map = {
-            "build": "Rank for correct Google ADK implementation patterns",
-            "debug": "Rank for debugging and error resolution",
-            "explain": "Rank for explaining ADK concepts",
-            "refactor": "Rank for best practices and refactoring",
-        }
-        rerank_query = f"{intent_map.get(mode, intent_map['build'])}. QUERY: {query}"
+            intent_map = {
+                "build": "Rank for correct implementation patterns and code examples",
+                "debug": "Rank for debugging and error resolution",
+                "explain": "Rank for explaining concepts and documentation",
+                "refactor": "Rank for best practices and refactoring",
+            }
+            rerank_query = f"{intent_map.get(mode, intent_map['build'])}. QUERY: {query}"
 
-        reranking = voyage.rerank(
-            query=rerank_query,
-            documents=documents,
-            model=settings.voyage.rerank_model,
-            top_k=min(
-                len(documents), rerank_candidates
-            ),  # Rerank all balanced candidates
-        )
+            reranking = voyage.rerank(
+                query=rerank_query,
+                documents=documents,
+                model=settings.voyage.rerank_model,
+                top_k=min(
+                    len(documents), rerank_candidates
+                ),  # Rerank all balanced candidates
+            )
 
-        reranked_candidates = []
-        for result in reranking.results:
-            original = balanced_candidates[result.index].copy()
-            original["rerank_score"] = result.relevance_score
-            original["reranked"] = True
-            reranked_candidates.append(original)
+            reranked_candidates = []
+            for result in reranking.results:
+                original = balanced_candidates[result.index].copy()
+                original["rerank_score"] = result.relevance_score
+                original["reranked"] = True
+                reranked_candidates.append(original)
 
-        candidates = reranked_candidates
+            candidates = reranked_candidates
 
-        if verbose:
-            print(f"\n[4/5] Reranking: {len(candidates)} candidates reranked")
+            if verbose:
+                print(f"\n[4/5] Reranking: {len(candidates)} candidates reranked")
+
+        except Exception as e:
+            warnings.append(f"rerank_unavailable: {str(e)}")
+            candidates = balanced_candidates  # Use pre-rerank ordering
+            if verbose:
+                print(f"\n[4/5] Reranking: failed ({str(e)}), using fusion ordering")
 
     timings["reranking"] = time.time() - t0
 
@@ -548,7 +634,7 @@ def main():
     """Command-line interface."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Optimal ADK RAG query")
+    parser = argparse.ArgumentParser(description="Optimal RAG query with multi-stage retrieval")
     parser.add_argument("query", help="Search query")
     parser.add_argument("--top-k", type=int, default=12, help="Number of results")
     parser.add_argument(
@@ -565,6 +651,18 @@ def main():
         "--rerank-candidates", type=int, default=60, help="Candidates to reranker"
     )
     parser.add_argument(
+        "--fusion",
+        choices=["dbsf", "rrf"],
+        default="dbsf",
+        help="Fusion method: dbsf (Distribution-Based Score Fusion) or rrf (Reciprocal Rank Fusion)",
+    )
+    parser.add_argument(
+        "--score-threshold",
+        type=float,
+        default=0.0,
+        help="Filter results below this score (0 = disabled)",
+    )
+    parser.add_argument(
         "--corpus",
         action="append",
         choices=ALL_CORPORA,
@@ -572,7 +670,7 @@ def main():
     )
     parser.add_argument(
         "--sdk",
-        choices=list(SDK_GROUPS.keys()),
+        choices=list(CORPUS_GROUPS.keys()),
         help="Filter by SDK group: adk, openai, or general",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
@@ -581,14 +679,14 @@ def main():
     # Build corpus filter from --sdk or --corpus
     filters = {}
     if args.sdk:
-        filters["corpus"] = SDK_GROUPS[args.sdk]
+        filters["corpus"] = CORPUS_GROUPS[args.sdk]
     elif args.corpus:
         if len(args.corpus) == 1:
             filters["corpus"] = args.corpus[0]
         else:
             filters["corpus"] = args.corpus
 
-    results = search_adk(
+    results = search(
         query=args.query,
         top_k=args.top_k,
         mode=args.mode,
@@ -596,12 +694,14 @@ def main():
         rerank=not args.no_rerank,
         first_stage_k=args.first_stage_k,
         rerank_candidates=args.rerank_candidates,
+        fusion_method=args.fusion,
+        score_threshold=args.score_threshold,
         filters=filters if filters else None,
         verbose=args.verbose,
     )
 
     print(f"\n{'=' * 80}")
-    print("ADK GROUNDING RETRIEVAL RESULTS")
+    print("RAG RETRIEVAL RESULTS")
     print(f"{'=' * 80}")
     print(f"\nQuery: {results['query']}")
     print(f"Mode: {results['mode']}")

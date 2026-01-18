@@ -21,7 +21,17 @@ vectors:
   sparse_lexical: "sparse_lexical"
 
 retrieval_defaults:
-  fusion: "rrf"
+  # New unified config
+  fusion_method: "dbsf"  # "dbsf" (Distribution-Based Score Fusion) or "rrf" (Reciprocal Rank Fusion)
+  score_threshold: 0.0   # Filter results below this score (0 = disabled)
+  top_k: 12             # Final number of results
+  first_stage_k: 80     # Candidates per prefetch lane
+  rerank_candidates: 60 # Candidates to send to reranker
+  group_by: "path"      # Field to group by for deduplication (one best chunk per file)
+  group_size: 1         # Max results per group
+
+  # Legacy fields for backwards compatibility (kept for env var substitution)
+  fusion: "dbsf"
   prefetch_limit_dense: ${RETRIEVAL_PREFETCH_LIMIT_DENSE}
   prefetch_limit_sparse: ${RETRIEVAL_PREFETCH_LIMIT_SPARSE}
   final_limit: ${RETRIEVAL_FINAL_LIMIT}

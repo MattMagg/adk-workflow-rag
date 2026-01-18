@@ -71,7 +71,15 @@ class VectorConfig(BaseModel):
 
 class RetrievalConfig(BaseModel):
     """Retrieval defaults."""
-    fusion: str = Field(default="rrf")
+    fusion_method: str = Field(default="dbsf", description="Fusion strategy: dbsf or rrf")
+    score_threshold: float = Field(default=0.0, description="Filter results below this score (0 = disabled)")
+    top_k: int = Field(default=12, description="Final number of results")
+    first_stage_k: int = Field(default=80, description="Candidates per prefetch lane")
+    rerank_candidates: int = Field(default=60, description="Candidates to send to reranker")
+    group_by: str = Field(default="path", description="Field to group by for deduplication")
+    group_size: int = Field(default=1, description="Max results per group")
+    # Legacy fields for backwards compatibility
+    fusion: str = Field(default="dbsf")
     prefetch_limit_dense: int = Field(default=60)
     prefetch_limit_sparse: int = Field(default=80)
     final_limit: int = Field(default=30)

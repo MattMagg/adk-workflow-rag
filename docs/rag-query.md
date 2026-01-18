@@ -14,19 +14,19 @@ Query the grounding database for documentation and code examples. Use `--sdk` to
 source .venv/bin/activate
 
 # Query Google ADK only
-python -m src.grounding.query.query_adk "how to use ToolContext" --sdk adk
+python -m src.grounding.query.query "how to use ToolContext" --sdk adk
 
 # Query OpenAI Agents SDK only
-python -m src.grounding.query.query_adk "how to create handoffs" --sdk openai
+python -m src.grounding.query.query "how to create handoffs" --sdk openai
 
 # Query LangChain ecosystem (includes LangGraph + DeepAgents)
-python -m src.grounding.query.query_adk "ChatOpenAI model" --sdk langchain
+python -m src.grounding.query.query "ChatOpenAI model" --sdk langchain
 
 # Query LangGraph-specific (includes DeepAgents)
-python -m src.grounding.query.query_adk "StateGraph checkpoint" --sdk langgraph
+python -m src.grounding.query.query "StateGraph checkpoint" --sdk langgraph
 
 # Query general agent development docs
-python -m src.grounding.query.query_adk "agent architectures" --sdk general
+python -m src.grounding.query.query "agent architectures" --sdk general
 ```
 
 ### SDK Groups
@@ -45,13 +45,13 @@ python -m src.grounding.query.query_adk "agent architectures" --sdk general
 
 ```bash
 # Verbose output with timing
-python -m src.grounding.query.query_adk "your query" --sdk adk --verbose
+python -m src.grounding.query.query "your query" --sdk adk --verbose
 
 # Multi-query expansion (better recall, slower)
-python -m src.grounding.query.query_adk "your query" --sdk adk --multi-query
+python -m src.grounding.query.query "your query" --sdk adk --multi-query
 
 # Filter by specific corpus (multiple allowed)
-python -m src.grounding.query.query_adk "your query" --corpus adk_docs --corpus adk_python
+python -m src.grounding.query.query "your query" --corpus adk_docs --corpus adk_python
 ```
 
 ---
@@ -59,13 +59,13 @@ python -m src.grounding.query.query_adk "your query" --corpus adk_docs --corpus 
 ## Python Usage
 
 ```python
-from src.grounding.query.query_adk import search_adk, SDK_GROUPS
+from src.grounding.query.query import search, CORPUS_GROUPS
 
 # Query with SDK filter
-results = search_adk(
+results = search(
     query="how to use ToolContext",
     top_k=12,
-    filters={"corpus": SDK_GROUPS["adk"]}
+    filters={"corpus": CORPUS_GROUPS["adk"]}
 )
 
 # Access results
@@ -82,10 +82,14 @@ for r in results["results"]:
 |------|---------|-------------|
 | `--sdk` | none | SDK group: `adk`, `openai`, `langchain`, `langgraph`, `general` |
 | `--corpus` | all | Filter by specific corpus (repeatable) |
-| `--top-k` | 12 | Number of results |
+| `--top-k` | 12 | Number of final results |
+| `--fusion` | dbsf | Fusion method: `dbsf` (Distribution-Based) or `rrf` (Reciprocal Rank) |
+| `--score-threshold` | 0.0 | Filter results below this score (0 = disabled) |
+| `--first-stage-k` | 80 | Candidates per prefetch lane |
+| `--rerank-candidates` | 60 | Candidates sent to reranker |
 | `--mode` | build | Retrieval mode: build, debug, explain, refactor |
 | `--multi-query` | off | Enable query expansion (+15% recall, slower) |
-| `--verbose` | off | Show timing breakdown |
+| `--verbose` | off | Show timing breakdown and stage info |
 | `--no-rerank` | off | Disable VoyageAI reranking |
 
 ---
@@ -108,8 +112,9 @@ for r in results["results"]:
 
 ## Pipeline
 
-1. **Query Expansion** (optional) — Generate variations
-2. **Hybrid Search** — Dense docs + dense code + sparse (RRF fusion)
-3. **Candidate Balancing** — Ensure docs/code mix before rerank
-4. **VoyageAI Rerank** — Cross-encoder refinement  
-5. **Coverage Gates** — Enforce minimum docs/code in output
+1. **Query Expansion** (optional) — Generate balanced query variations
+2. **Hybrid Search** — Dense docs + dense code + sparse (DBSF/RRF fusion)
+3. **Deduplication** — Group by file path (one best chunk per source file)
+4. **Candidate Balancing** — Ensure docs/code mix before rerank
+5. **VoyageAI Rerank** — Cross-encoder refinement with large candidate pool
+6. **Coverage Gates** — Enforce minimum docs/code in final output

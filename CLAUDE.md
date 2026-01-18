@@ -23,14 +23,14 @@ pip install -e ".[dev]"  # with dev dependencies
 pytest tests/
 
 # Query the RAG pipeline
-python -m src.grounding.query.query_adk "your query" --verbose
-python -m src.grounding.query.query_adk "your query" --multi-query --top-k 12
+python -m src.grounding.query.query "your query" --verbose
+python -m src.grounding.query.query "your query" --multi-query --top-k 12
 
 # Query specific SDK groups
-python -m src.grounding.query.query_adk "your query" --sdk adk      # Google ADK
-python -m src.grounding.query.query_adk "your query" --sdk openai   # OpenAI Agents
-python -m src.grounding.query.query_adk "your query" --sdk langchain # LangChain ecosystem
-python -m src.grounding.query.query_adk "your query" --sdk langgraph # LangGraph + DeepAgents
+python -m src.grounding.query.query "your query" --sdk adk      # Google ADK
+python -m src.grounding.query.query "your query" --sdk openai   # OpenAI Agents
+python -m src.grounding.query.query "your query" --sdk langchain # LangChain ecosystem
+python -m src.grounding.query.query "your query" --sdk langgraph # LangGraph + DeepAgents
 
 # Pipeline scripts (run in order for fresh setup)
 python -m src.grounding.scripts.00_smoke_test_connections
@@ -48,9 +48,9 @@ python .agent/scripts/select_workflow.py "add a function tool"
 
 ### RAG Pipeline (`src/grounding/`)
 
-Multi-stage retrieval: Hybrid Search → RRF Fusion → Coverage Balancing → Voyage Rerank
+Multi-stage retrieval: Hybrid Search → Configurable Fusion (DBSF/RRF) → Deduplication → Coverage Balancing → Voyage Rerank
 
-- **Query entry point**: `src/grounding/query/query_adk.py` - `search_adk()` function
+- **Query entry point**: `src/grounding/query/query.py` - `search()` function
 - **Config**: `src/grounding/config.py` loads `.env` + `config/settings.yaml` with `${VAR}` substitution
 - **Clients**: `clients/` wraps Qdrant, Voyage AI, and FastEmbed (SPLADE)
 - **Chunkers**: `chunkers/markdown.py` (heading-aware), `chunkers/python_code.py` (AST-based)
@@ -87,10 +87,11 @@ Each corpus in `config/settings.yaml` under `ingestion.corpora` defines include/
 
 ### Retrieval Flow
 1. Embed query with voyage-context-3 (docs) + voyage-code-3 (code) + SPLADE (sparse)
-2. Prefetch from 3 vector spaces with RRF fusion in Qdrant
-3. Balance candidate pool to ensure docs/code mix
-4. Rerank top candidates with voyage rerank-2.5
-5. Apply coverage gates for final selection
+2. Prefetch from 3 vector spaces with DBSF/RRF fusion in Qdrant
+3. Deduplicate by file path (one best chunk per source file) using query_points_groups
+4. Balance candidate pool to ensure docs/code mix
+5. Rerank top candidates with voyage rerank-2.5
+6. Apply coverage gates for final selection
 
 ## Environment Variables
 
