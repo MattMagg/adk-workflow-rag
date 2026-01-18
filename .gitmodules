@@ -18,7 +18,7 @@
 	url = https://github.com/openai/openai-agents-python.git
 [submodule "corpora/claude-agent-sdk-python"]
 	path = corpora/claude-agent-sdk-python
-	url = https://github.com/anthropic/claude-agent-sdk-python.git
+	url = https://github.com/anthropics/claude-agent-sdk-python.git
 [submodule "corpora/crewAI"]
 	path = corpora/crewAI
 	url = https://github.com/crewAIInc/crewAI.git
