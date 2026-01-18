@@ -43,12 +43,6 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Text Processing :: Indexing",
 ]
-
-[project.urls]
-Homepage = "https://github.com/MattMagg/rag_qdrant_voyage"
-Repository = "https://github.com/MattMagg/rag_qdrant_voyage"
-Documentation = "https://github.com/MattMagg/rag_qdrant_voyage#readme"
-Issues = "https://github.com/MattMagg/rag_qdrant_voyage/issues"
 dependencies = [
     "qdrant-client>=1.12.0",
     "voyageai>=0.3.0",
@@ -59,6 +53,12 @@ dependencies = [
     "rich>=13.0.0",
     "fastembed>=0.5.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/MattMagg/rag_qdrant_voyage"
+Repository = "https://github.com/MattMagg/rag_qdrant_voyage"
+Documentation = "https://github.com/MattMagg/rag_qdrant_voyage#readme"
+Issues = "https://github.com/MattMagg/rag_qdrant_voyage/issues"
 
 [project.optional-dependencies]
 dev = [
