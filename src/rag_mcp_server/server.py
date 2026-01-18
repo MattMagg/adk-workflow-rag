@@ -718,6 +718,26 @@ async def rag_diagnose() -> dict[str, Any]:
     }
 
 
+def _mask_secret(secret: str | None, include_secrets: bool) -> str:
+    """
+    Mask a secret value, showing only the last 4 characters.
+
+    Args:
+        secret: The secret value to mask
+        include_secrets: If True, show full value; if False, mask it
+
+    Returns:
+        Masked string like "****abc1" or full value if include_secrets=True
+    """
+    if secret is None:
+        return "<not configured>"
+    if include_secrets:
+        return secret
+    if len(secret) <= 4:
+        return "****"
+    return f"****{secret[-4:]}"
+
+
 @mcp.tool
 async def rag_config_show(
     include_secrets: Annotated[
@@ -730,12 +750,93 @@ async def rag_config_show(
     Shows the active configuration including Qdrant URL, collection name,
     retrieval settings, and ingestion paths. Secrets are masked by default.
     """
-    return {
-        "status": "not_implemented",
-        "tool": "rag_config_show",
-        "params": {
-            "include_secrets": include_secrets,
+    warnings: list[str] = []
+
+    # Load settings
+    try:
+        settings = get_settings()
+    except Exception as e:
+        return {
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "warnings": [f"Failed to load settings: {e}"],
+        }
+
+    # Build Qdrant config section
+    qdrant_config = {
+        "url": settings.qdrant.url,
+        "collection": settings.qdrant.collection,
+        "api_key": _mask_secret(settings.qdrant.api_key, include_secrets),
+    }
+
+    # Build Voyage config section
+    voyage_config = {
+        "api_key": _mask_secret(settings.voyage.api_key, include_secrets),
+        "docs_model": settings.voyage.docs_model,
+        "code_model": settings.voyage.code_model,
+        "rerank_model": settings.voyage.rerank_model,
+        "output_dimension": settings.voyage.output_dimension,
+    }
+
+    # Build retrieval config section from retrieval_defaults
+    rd = settings.retrieval_defaults
+    retrieval_config = {
+        "fusion_method": rd.fusion_method,
+        "score_threshold": rd.score_threshold,
+        "top_k": rd.top_k,
+        "first_stage_k": rd.first_stage_k,
+        "rerank_candidates": rd.rerank_candidates,
+        "group_by": rd.group_by,
+        "group_size": rd.group_size,
+        "context_expansion": {
+            "enabled": rd.context_expansion.enabled,
+            "expand_top_k": rd.context_expansion.expand_top_k,
+            "window_size": rd.context_expansion.window_size,
+            "score_decay_factor": rd.context_expansion.score_decay_factor,
+            "max_expanded_chunks": rd.context_expansion.max_expanded_chunks,
         },
+        # Legacy fields for reference
+        "legacy": {
+            "prefetch_limit_dense": rd.prefetch_limit_dense,
+            "prefetch_limit_sparse": rd.prefetch_limit_sparse,
+            "final_limit": rd.final_limit,
+            "rerank_top_k": rd.rerank_top_k,
+        },
+    }
+
+    # Build vector spaces config
+    vectors_config = {
+        "dense_docs": settings.vectors.dense_docs,
+        "dense_code": settings.vectors.dense_code,
+        "sparse_lexical": settings.vectors.sparse_lexical,
+    }
+
+    # Build ingestion config summary
+    ingestion_config = {
+        "batch_size": settings.ingestion.batch_size,
+        "corpora_count": len(settings.ingestion.corpora),
+        "corpora": list(settings.ingestion.corpora.keys()),
+    }
+
+    # Add warnings for potential issues
+    if not settings.qdrant.url:
+        warnings.append("Qdrant URL is not configured")
+    if not settings.qdrant.api_key:
+        warnings.append("Qdrant API key is not configured")
+    if not settings.voyage.api_key:
+        warnings.append("Voyage API key is not configured")
+    if len(settings.ingestion.corpora) == 0:
+        warnings.append("No corpora configured for ingestion")
+
+    return {
+        "qdrant": qdrant_config,
+        "voyage": voyage_config,
+        "retrieval": retrieval_config,
+        "vectors": vectors_config,
+        "ingestion": ingestion_config,
+        "presets": RETRIEVAL_PRESETS,
+        "sdk_groups": dict(CORPUS_GROUPS),
+        "warnings": warnings,
     }
 
 
