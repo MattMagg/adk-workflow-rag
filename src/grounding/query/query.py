@@ -20,6 +20,16 @@ Multi-Stage Retrieval Pipeline:
    - Final refinement with rerank-2.5
    - Large candidate pool (60+) for best results
 
+4b. Context-Aware Expansion (enabled by default)
+   - Fetches adjacent chunks (±N) around top-K reranked results
+   - Provides contextual continuity for better comprehension
+   - Score inheritance: adjacent_score = parent_score * (decay_factor ** distance)
+   - ~3-4% overhead, 50-70ms additional latency
+
+5. Coverage Gates
+   - Final selection ensuring minimum docs/code representation
+   - Guarantees diverse result set across content types
+
 Usage:
     from src.grounding.query.query import search
 
@@ -28,9 +38,19 @@ Usage:
         top_k=12
     )
 
+    # With context expansion (enabled by default)
+    results = search(
+        query="LoopAgent implementation",
+        top_k=12,
+        expand_context=True,  # Explicit (default: True from config)
+        expand_top_k=5,       # Expand top 5 results
+        expand_window=1       # Fetch ±1 adjacent chunks
+    )
+
 Command line:
     python -m src.grounding.query.query "how to use tool context" --top-k 12
     python -m src.grounding.query.query "LoopAgent" --multi-query --verbose
+    python -m src.grounding.query.query "agent patterns" --expand-context --expand-top-k 3
 """
 
 import os
@@ -302,6 +322,190 @@ def apply_coverage_gates(
     return selected, warnings
 
 
+def expand_context_around_chunks(
+    candidates: List[Dict],
+    qdrant: QdrantClient,
+    collection_name: str,
+    expand_top_k: int,
+    window_size: int,
+    score_decay_factor: float,
+    max_expanded_chunks: int,
+    verbose: bool = False,
+) -> tuple[List[Dict], List[str]]:
+    """
+    Expand context by fetching adjacent chunks for top-K results.
+
+    Strategy:
+    1. Select top expand_top_k candidates (sorted by rerank_score)
+    2. Build batch OR filter for all adjacent chunks (path + chunk_index)
+    3. Execute single scroll() call
+    4. Match fetched chunks to parents, compute inherited scores
+    5. Deduplicate against existing candidates
+    6. Merge and return
+
+    Args:
+        candidates: Reranked candidates with scores
+        qdrant: Qdrant client instance
+        collection_name: Qdrant collection name
+        expand_top_k: Number of top candidates to expand (default: 5)
+        window_size: How many chunks on each side (±N, default: 1)
+        score_decay_factor: Score multiplier (default: 0.85)
+        max_expanded_chunks: Safety limit on total expanded (default: 20)
+        verbose: Print debug info
+
+    Returns:
+        Tuple of (expanded_candidates_list, warnings_list)
+
+    Score Inheritance:
+        adjacent_score = parent_rerank_score * (decay_factor ** abs(relative_position))
+
+        Example (decay=0.85):
+        Parent (N):   score = 0.900
+        Adjacent N±1: score = 0.900 * 0.85¹ = 0.765
+        Adjacent N±2: score = 0.900 * 0.85² = 0.650
+    """
+    warnings = []
+
+    # 1. Select top-K candidates to expand
+    sorted_candidates = sorted(
+        candidates, key=lambda x: x.get("rerank_score", 0), reverse=True
+    )
+    expand_targets = sorted_candidates[:expand_top_k]
+
+    # 2. Build batch OR filter for adjacent chunks
+    fetch_targets = []
+    for chunk in expand_targets:
+        path = chunk["path"]
+        chunk_idx = chunk.get("chunk_index")
+
+        # Skip if chunk_index is missing
+        if chunk_idx is None:
+            continue
+
+        for offset in range(-window_size, window_size + 1):
+            if offset == 0:
+                continue  # Skip parent chunk
+            target_idx = chunk_idx + offset
+            if target_idx < 0:
+                continue  # No negative chunk indices
+
+            fetch_targets.append(
+                {
+                    "path": path,
+                    "chunk_index": target_idx,
+                    "parent_id": chunk["id"],
+                    "parent_score": chunk.get("rerank_score", 0),
+                    "relative_position": offset,
+                }
+            )
+
+    if not fetch_targets:
+        return candidates, warnings
+
+    # 3. Build OR filter conditions
+    conditions = []
+    for target in fetch_targets:
+        conditions.append(
+            models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="path", match=models.MatchValue(value=target["path"])
+                    ),
+                    models.FieldCondition(
+                        key="chunk_index",
+                        match=models.MatchValue(value=target["chunk_index"]),
+                    ),
+                ]
+            )
+        )
+
+    # 4. Single scroll call to fetch all adjacent chunks
+    combined_filter = models.Filter(should=conditions)
+    try:
+        records, _ = qdrant.scroll(
+            collection_name=collection_name,
+            scroll_filter=combined_filter,
+            limit=len(fetch_targets),
+            with_payload=True,
+        )
+    except Exception as e:
+        warnings.append(f"context_expansion_failed: {str(e)}")
+        return candidates, warnings
+
+    # 5. Match fetched to parents, compute scores
+    existing_ids = {c["id"] for c in candidates}
+    expanded_chunks = []
+
+    for record in records:
+        chunk_id = str(record.id)
+        if chunk_id in existing_ids:
+            continue  # Deduplicate
+
+        # Find parent from fetch_targets
+        chunk_path = record.payload.get("path")
+        chunk_idx = record.payload.get("chunk_index")
+
+        parent_info = next(
+            (
+                t
+                for t in fetch_targets
+                if t["path"] == chunk_path and t["chunk_index"] == chunk_idx
+            ),
+            None,
+        )
+
+        if not parent_info:
+            continue
+
+        # Compute inherited score
+        decay = score_decay_factor ** abs(parent_info["relative_position"])
+        inherited_score = parent_info["parent_score"] * decay
+
+        expanded_chunks.append(
+            {
+                "id": chunk_id,
+                "text": record.payload.get("text", ""),
+                "corpus": record.payload.get("corpus", ""),
+                "kind": record.payload.get("kind", ""),
+                "repo": record.payload.get("repo", ""),
+                "path": record.payload.get("path", ""),
+                "commit": record.payload.get("commit", ""),
+                "chunk_id": record.payload.get("chunk_id", ""),
+                "chunk_index": record.payload.get("chunk_index"),
+                "start_line": record.payload.get("start_line"),
+                "end_line": record.payload.get("end_line"),
+                "score": inherited_score,
+                "rerank_score": inherited_score,
+                "reranked": False,
+                # Expansion metadata
+                "expanded_from": parent_info["parent_id"],
+                "relative_position": parent_info["relative_position"],
+            }
+        )
+
+    # 6. Apply max_expanded_chunks limit
+    if len(expanded_chunks) > max_expanded_chunks:
+        warnings.append(
+            f"context_expansion: truncated to {max_expanded_chunks} "
+            f"(would have added {len(expanded_chunks)})"
+        )
+        expanded_chunks = expanded_chunks[:max_expanded_chunks]
+
+    # 7. Merge and return
+    all_candidates = candidates + expanded_chunks
+
+    if verbose and len(expanded_chunks) > 0:
+        expected = len(fetch_targets)
+        actual = len(expanded_chunks)
+        if actual < expected:
+            warnings.append(
+                f"context_expansion: fetched {actual}/{expected} "
+                f"adjacent chunks (some missing)"
+            )
+
+    return all_candidates, warnings
+
+
 def search(
     query: str,
     top_k: Optional[int] = None,  # None = use config
@@ -314,6 +518,9 @@ def search(
     fusion_method: Optional[str] = None,  # None = use config
     score_threshold: Optional[float] = None,  # None = use config
     filters: Optional[Dict[str, Any]] = None,
+    expand_context: Optional[bool] = None,  # None = use config
+    expand_top_k: Optional[int] = None,  # None = use config
+    expand_window: Optional[int] = None,  # None = use config
     verbose: bool = False,
 ) -> Dict[str, Any]:
     """
@@ -324,6 +531,7 @@ def search(
     2. Hybrid search (dense docs + dense code + sparse with configurable fusion)
     3. Coverage-aware candidate balancing
     4. VoyageAI reranking with large candidate pool
+    4b. Context expansion (optional, fetch adjacent chunks for top-K results)
     5. Coverage gates for final selection
 
     Args:
@@ -338,6 +546,9 @@ def search(
         fusion_method: Fusion strategy - "dbsf" (default) or "rrf"
         score_threshold: Filter results below this score (0 = disabled)
         filters: Payload filters (e.g., {"corpus": "adk_docs"})
+        expand_context: Enable context-aware expansion (default: from config, enabled by default)
+        expand_top_k: Number of top results to expand (default: from config, 5)
+        expand_window: Window size for adjacent chunks (±N, default: from config, 1)
         verbose: Print debug info
 
     Returns:
@@ -388,13 +599,13 @@ def search(
     if multi_query:
         query_variations = generate_query_variations(query, num_query_variations)
         if verbose:
-            print(f"\n[1/5] Query Expansion: {len(query_variations)} variations")
+            print(f"\n[1/6] Query Expansion: {len(query_variations)} variations")
             for i, q in enumerate(query_variations):
                 print(f"      {i + 1}. {q}")
     else:
         query_variations = [query]
         if verbose:
-            print(f"\n[1/5] Query Expansion: disabled (single query)")
+            print(f"\n[1/6] Query Expansion: disabled (single query)")
     timings["query_expansion"] = time.time() - t0
 
     # Build filter if provided
@@ -500,6 +711,7 @@ def search(
                         "path": hit.payload.get("path", ""),
                         "commit": hit.payload.get("commit", ""),
                         "chunk_id": hit.payload.get("chunk_id", ""),
+                        "chunk_index": hit.payload.get("chunk_index"),
                         "start_line": hit.payload.get("start_line"),
                         "end_line": hit.payload.get("end_line"),
                         "score": hit.score,
@@ -513,7 +725,7 @@ def search(
             doc_count = sum(1 for r in results if r.get("kind") == "doc")
             code_count = sum(1 for r in results if r.get("kind") == "code")
             print(
-                f"\n[2/5] Hybrid Search: Query {i + 1}/{len(query_variations)} → {len(results)} results (docs={doc_count}, code={code_count})"
+                f"\n[2/6] Hybrid Search: Query {i + 1}/{len(query_variations)} → {len(results)} results (docs={doc_count}, code={code_count})"
             )
 
     timings["search"] = time.time() - t0 - timings.get("embedding", 0)
@@ -522,7 +734,7 @@ def search(
     if multi_query and len(all_results) > 1:
         candidates = reciprocal_rank_fusion(all_results)
         if verbose:
-            print(f"\n[2b/5] RRF Fusion: {len(candidates)} unique candidates")
+            print(f"\n[2b/6] RRF Fusion: {len(candidates)} unique candidates")
     else:
         candidates = all_results[0] if all_results else []
 
@@ -534,13 +746,13 @@ def search(
             doc_count = sum(1 for c in balanced_candidates if c.get("kind") == "doc")
             code_count = sum(1 for c in balanced_candidates if c.get("kind") == "code")
             print(
-                f"\n[3/5] Candidate Balancing: {len(balanced_candidates)} candidates (docs={doc_count}, code={code_count})"
+                f"\n[3/6] Candidate Balancing: {len(balanced_candidates)} candidates (docs={doc_count}, code={code_count})"
             )
     else:
         balanced_candidates = candidates
         if verbose:
             print(
-                f"\n[3/5] Candidate Balancing: skipped ({len(candidates)} < {rerank_candidates})"
+                f"\n[3/6] Candidate Balancing: skipped ({len(candidates)} < {rerank_candidates})"
             )
     timings["balancing"] = time.time() - t0
 
@@ -580,15 +792,53 @@ def search(
             candidates = reranked_candidates
 
             if verbose:
-                print(f"\n[4/5] Reranking: {len(candidates)} candidates reranked")
+                print(f"\n[4/6] Reranking: {len(candidates)} candidates reranked")
 
         except Exception as e:
             warnings.append(f"rerank_unavailable: {str(e)}")
             candidates = balanced_candidates  # Use pre-rerank ordering
             if verbose:
-                print(f"\n[4/5] Reranking: failed ({str(e)}), using fusion ordering")
+                print(f"\n[4/6] Reranking: failed ({str(e)}), using fusion ordering")
 
     timings["reranking"] = time.time() - t0
+
+    # Stage 4b: Context expansion (enabled by default)
+    # Load config first to check if enabled
+    ctx_config = settings.retrieval_defaults.context_expansion
+    expand_context_enabled = (
+        expand_context if expand_context is not None else ctx_config.enabled
+    )
+
+    if expand_context_enabled and len(candidates) > 0:
+        t0 = time.time()
+
+        # Load other config values
+        expand_top_k_val = (
+            expand_top_k if expand_top_k is not None else ctx_config.expand_top_k
+        )
+        expand_window_val = (
+            expand_window if expand_window is not None else ctx_config.window_size
+        )
+
+        expanded_candidates, expansion_warnings = expand_context_around_chunks(
+            candidates=candidates,
+            qdrant=qdrant,
+            collection_name=settings.qdrant.collection,
+            expand_top_k=expand_top_k_val,
+            window_size=expand_window_val,
+            score_decay_factor=ctx_config.score_decay_factor,
+            max_expanded_chunks=ctx_config.max_expanded_chunks,
+            verbose=verbose,
+        )
+
+        warnings.extend(expansion_warnings)
+        original_count = len(candidates)
+        candidates = expanded_candidates
+        timings["context_expansion"] = time.time() - t0
+
+        if verbose:
+            expanded_count = len(candidates) - original_count
+            print(f"\n[4b/6] Context Expansion: +{expanded_count} adjacent chunks")
 
     # Stage 5: Coverage gates for final selection
     t0 = time.time()
@@ -600,7 +850,7 @@ def search(
         doc_count = sum(1 for r in final_results if r.get("kind") == "doc")
         code_count = sum(1 for r in final_results if r.get("kind") == "code")
         print(
-            f"\n[5/5] Coverage Gates: {len(final_results)} final results (docs={doc_count}, code={code_count})"
+            f"\n[5/6] Coverage Gates: {len(final_results)} final results (docs={doc_count}, code={code_count})"
         )
 
     timings["total"] = time.time() - start_time
@@ -673,6 +923,23 @@ def main():
         choices=list(CORPUS_GROUPS.keys()),
         help="Filter by SDK group: adk, openai, or general",
     )
+    parser.add_argument(
+        "--expand-context",
+        action="store_true",
+        help="Enable context-aware expansion (fetch adjacent chunks)",
+    )
+    parser.add_argument(
+        "--expand-top-k",
+        type=int,
+        default=None,
+        help="Number of top results to expand (default: from config)",
+    )
+    parser.add_argument(
+        "--expand-window",
+        type=int,
+        default=None,
+        help="Window size for adjacent chunks (±N, default: from config)",
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
@@ -686,6 +953,10 @@ def main():
         else:
             filters["corpus"] = args.corpus
 
+    # Handle expand_context: if flag not provided, pass None to use config default
+    # store_true gives False when not provided, but we want None for config fallback
+    expand_context_arg = args.expand_context if "--expand-context" in sys.argv else None
+
     results = search(
         query=args.query,
         top_k=args.top_k,
@@ -697,6 +968,9 @@ def main():
         fusion_method=args.fusion,
         score_threshold=args.score_threshold,
         filters=filters if filters else None,
+        expand_context=expand_context_arg,
+        expand_top_k=args.expand_top_k,
+        expand_window=args.expand_window,
         verbose=args.verbose,
     )
 

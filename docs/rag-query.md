@@ -50,6 +50,9 @@ python -m src.grounding.query.query "your query" --sdk adk --verbose
 # Multi-query expansion (better recall, slower)
 python -m src.grounding.query.query "your query" --sdk adk --multi-query
 
+# Context expansion (enabled by default, fetch adjacent chunks)
+python -m src.grounding.query.query "your query" --sdk adk --expand-context --expand-top-k 3
+
 # Filter by specific corpus (multiple allowed)
 python -m src.grounding.query.query "your query" --corpus adk_docs --corpus adk_python
 ```
@@ -89,6 +92,9 @@ for r in results["results"]:
 | `--rerank-candidates` | 60 | Candidates sent to reranker |
 | `--mode` | build | Retrieval mode: build, debug, explain, refactor |
 | `--multi-query` | off | Enable query expansion (+15% recall, slower) |
+| `--expand-context` | **on** | **Fetch adjacent chunks around top results (enabled by default)** |
+| `--expand-top-k` | 5 | Number of top results to expand |
+| `--expand-window` | 1 | Window size for adjacent chunks (±N) |
 | `--verbose` | off | Show timing breakdown and stage info |
 | `--no-rerank` | off | Disable VoyageAI reranking |
 
@@ -117,4 +123,5 @@ for r in results["results"]:
 3. **Deduplication** — Group by file path (one best chunk per source file)
 4. **Candidate Balancing** — Ensure docs/code mix before rerank
 5. **VoyageAI Rerank** — Cross-encoder refinement with large candidate pool
-6. **Coverage Gates** — Enforce minimum docs/code in final output
+6. **Context Expansion** (enabled by default) — Fetch adjacent chunks (±N) around top-K results for contextual continuity
+7. **Coverage Gates** — Enforce minimum docs/code in final output

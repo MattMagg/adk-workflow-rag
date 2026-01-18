@@ -30,6 +30,14 @@ retrieval_defaults:
   group_by: "path"      # Field to group by for deduplication (one best chunk per file)
   group_size: 1         # Max results per group
 
+  # Context expansion settings (enabled by default for better contextual depth)
+  context_expansion:
+    enabled: true           # Fetch adjacent chunks around top results
+    expand_top_k: 5         # Number of top results to expand
+    window_size: 1          # ±1 = fetch N-1 and N+1 (3 total per parent)
+    score_decay_factor: 0.85  # Score multiplier for adjacent chunks
+    max_expanded_chunks: 20 # Safety cap on total expanded
+
   # Legacy fields for backwards compatibility (kept for env var substitution)
   fusion: "dbsf"
   prefetch_limit_dense: ${RETRIEVAL_PREFETCH_LIMIT_DENSE}

@@ -125,6 +125,7 @@ Return an object shaped like:
 
 **Step D — Candidate normalization/dedup**
 **Step E — Voyage rerank-2.5** (single merged list, truncation on)
+**Step E.5 — Context expansion** (enabled by default): Fetch adjacent chunks (±N) around top-K reranked results for contextual continuity
 **Step F — Coverage gates + finalize top K**
 **Step G — Emit Evidence Pack** with citations and debug metadata
 

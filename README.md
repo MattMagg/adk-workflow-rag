@@ -64,8 +64,11 @@ python -m src.grounding.query.query "How to create handoffs?" --sdk openai
 # Query LangChain ecosystem
 python -m src.grounding.query.query "How to use LangGraph checkpoints?" --sdk langchain
 
-# With verbose output
+# With verbose output and multi-query expansion
 python -m src.grounding.query.query "your query" --verbose --multi-query
+
+# With context expansion (fetch adjacent chunks for deeper understanding)
+python -m src.grounding.query.query "your query" --expand-context --expand-top-k 5
 ```
 
 ---
@@ -120,6 +123,17 @@ python -m src.grounding.query.query "your query" --verbose --multi-query
                     ┌────────────────────────┐
                     │  VOYAGE RERANK-2.5     │
                     │  instruction-following │
+                    └────────────┬───────────┘
+                                 ▼
+                    ┌────────────────────────┐
+                    │  CONTEXT EXPANSION     │
+                    │  fetch adjacent chunks │
+                    │  (±N around top-K)     │
+                    └────────────┬───────────┘
+                                 ▼
+                    ┌────────────────────────┐
+                    │   COVERAGE GATES       │
+                    │  ensure docs/code mix  │
                     └────────────┬───────────┘
                                  ▼
                     ┌────────────────────────┐
@@ -283,6 +297,14 @@ retrieval_defaults:
   rerank_candidates: 60            # Candidates sent to reranker
   group_by: "path"                 # Deduplicate by file path (one best chunk per file)
   group_size: 1                    # Max results per group
+
+  # Context expansion (enabled by default for deeper understanding)
+  context_expansion:
+    enabled: true                  # Fetch adjacent chunks around top results
+    expand_top_k: 5                # Number of top results to expand
+    window_size: 1                 # ±1 = fetch N-1 and N+1 chunks
+    score_decay_factor: 0.85       # Score multiplier for adjacent chunks
+    max_expanded_chunks: 20        # Safety cap on total expanded chunks
 ```
 
 Environment variable substitution (`${VAR}`) is supported throughout.
@@ -304,6 +326,34 @@ Results are **fused server-side** using Distribution-Based Score Fusion (DBSF) b
 ### Coverage Balancing
 
 Before reranking, the pipeline ensures a balanced mix of documentation and code results. This prevents the reranker from seeing only one content type and ensures grounded evidence from both sources.
+
+### Context-Aware Expansion
+
+**Enabled by default** for improved comprehension and continuity.
+
+After reranking identifies the most relevant chunks, context expansion **fetches adjacent chunks** (±N) around the top-K results. This provides:
+
+- **Contextual continuity**: See surrounding code/documentation for better understanding
+- **Reduced fragmentation**: Adjacent chunks often contain setup, imports, or related explanations
+- **Score inheritance**: Adjacent chunks receive decayed scores (`parent_score * decay_factor^distance`)
+
+**Example**: If chunk N=5 ranks #1 with score 0.90, context expansion fetches:
+- Chunk 4 (N-1): score = 0.90 × 0.85¹ = 0.765
+- Chunk 6 (N+1): score = 0.90 × 0.85¹ = 0.765
+
+**Performance**: ~50-70ms overhead (~3-4% increase), single batch fetch for efficiency.
+
+**Configuration**:
+```bash
+# Disable if needed (for latency-critical workloads)
+python -m src.grounding.query.query "query" --expand-context False
+
+# Adjust parameters
+python -m src.grounding.query.query "query" \
+    --expand-context \
+    --expand-top-k 3 \      # Expand top 3 results (default: 5)
+    --expand-window 2       # Fetch ±2 chunks (default: ±1)
+```
 
 ---
 

@@ -69,6 +69,36 @@ class VectorConfig(BaseModel):
     sparse_lexical: str = Field(default="sparse_lexical")
 
 
+class ContextExpansionConfig(BaseModel):
+    """Context expansion configuration."""
+    enabled: bool = Field(
+        default=False,
+        description="Enable context-aware expansion"
+    )
+    expand_top_k: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Number of top results to expand"
+    )
+    window_size: int = Field(
+        default=1,
+        ge=1,
+        le=3,
+        description="How many chunks on each side (±N)"
+    )
+    score_decay_factor: float = Field(
+        default=0.85,
+        ge=0.5,
+        le=1.0,
+        description="Score multiplier for adjacent chunks"
+    )
+    max_expanded_chunks: int = Field(
+        default=20,
+        description="Maximum total expanded chunks"
+    )
+
+
 class RetrievalConfig(BaseModel):
     """Retrieval defaults."""
     fusion_method: str = Field(default="dbsf", description="Fusion strategy: dbsf or rrf")
@@ -78,6 +108,13 @@ class RetrievalConfig(BaseModel):
     rerank_candidates: int = Field(default=60, description="Candidates to send to reranker")
     group_by: str = Field(default="path", description="Field to group by for deduplication")
     group_size: int = Field(default=1, description="Max results per group")
+
+    # Context expansion settings
+    context_expansion: ContextExpansionConfig = Field(
+        default_factory=ContextExpansionConfig,
+        description="Context expansion settings"
+    )
+
     # Legacy fields for backwards compatibility
     fusion: str = Field(default="dbsf")
     prefetch_limit_dense: int = Field(default=60)

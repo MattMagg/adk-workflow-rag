@@ -51,6 +51,9 @@ python -m src.grounding.query.query "query" --sdk langgraph # LangGraph + DeepAg
 
 # Additional options
 python -m src.grounding.query.query "query" --verbose --multi-query --top-k 12
+
+# Context expansion (enabled by default, fetch adjacent chunks)
+python -m src.grounding.query.query "query" --expand-context --expand-top-k 3 --expand-window 2
 ```
 
 ## Code Style Guidelines

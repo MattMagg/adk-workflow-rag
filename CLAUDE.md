@@ -26,6 +26,10 @@ pytest tests/
 python -m src.grounding.query.query "your query" --verbose
 python -m src.grounding.query.query "your query" --multi-query --top-k 12
 
+# With context expansion (enabled by default, fetch adjacent chunks)
+python -m src.grounding.query.query "your query" --expand-context --expand-top-k 5
+python -m src.grounding.query.query "your query" --expand-context --expand-window 2
+
 # Query specific SDK groups
 python -m src.grounding.query.query "your query" --sdk adk      # Google ADK
 python -m src.grounding.query.query "your query" --sdk openai   # OpenAI Agents
@@ -48,7 +52,7 @@ python .agent/scripts/select_workflow.py "add a function tool"
 
 ### RAG Pipeline (`src/grounding/`)
 
-Multi-stage retrieval: Hybrid Search → Configurable Fusion (DBSF/RRF) → Deduplication → Coverage Balancing → Voyage Rerank
+Multi-stage retrieval: Hybrid Search → Configurable Fusion (DBSF/RRF) → Deduplication → Coverage Balancing → Voyage Rerank → Context Expansion → Coverage Gates
 
 - **Query entry point**: `src/grounding/query/query.py` - `search()` function
 - **Config**: `src/grounding/config.py` loads `.env` + `config/settings.yaml` with `${VAR}` substitution
@@ -86,12 +90,13 @@ Settings loaded via `get_settings()` from `src/grounding/config.py`. Credentials
 Each corpus in `config/settings.yaml` under `ingestion.corpora` defines include/exclude globs, allowed extensions, and content kind (doc/code). Idempotent via text_hash comparison.
 
 ### Retrieval Flow
-1. Embed query with voyage-context-3 (docs) + voyage-code-3 (code) + SPLADE (sparse)
-2. Prefetch from 3 vector spaces with DBSF/RRF fusion in Qdrant
-3. Deduplicate by file path (one best chunk per source file) using query_points_groups
-4. Balance candidate pool to ensure docs/code mix
-5. Rerank top candidates with voyage rerank-2.5
-6. Apply coverage gates for final selection
+1. **Query Expansion (optional)**: Generate balanced code/docs query variations
+2. **Hybrid Search**: Embed query with voyage-context-3 (docs) + voyage-code-3 (code) + SPLADE (sparse)
+3. **Fusion & Deduplication**: Prefetch from 3 vector spaces with DBSF/RRF fusion, deduplicate by file path (one best chunk per source file) using query_points_groups
+4. **Candidate Balancing**: Balance candidate pool to ensure docs/code mix before reranking
+5. **Reranking**: Rerank top candidates with voyage rerank-2.5 cross-encoder
+6. **Context Expansion (enabled by default)**: Fetch adjacent chunks (±N) around top-K reranked results for contextual continuity. Score inheritance: `adjacent_score = parent_score * (decay_factor ** distance)`
+7. **Coverage Gates**: Apply final selection ensuring minimum docs/code representation
 
 ## Environment Variables
 
