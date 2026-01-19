@@ -1,14 +1,98 @@
-# Voyage + Qdrant RAG Pipeline
+# Agentic RAG SDK
 
 **Accuracy-first retrieval infrastructure for grounding AI coding agents.**
 
-A production-ready RAG pipeline using Voyage AI embeddings, Qdrant vector database, and hybrid retrieval with cross-encoder reranking. Currently indexes 13 corpora (~18,000 vectors) across major agentic AI SDKs.
+A production-ready RAG pipeline using Voyage AI embeddings, Qdrant vector database, and hybrid retrieval with cross-encoder reranking. Includes an **MCP server** for seamless integration with Claude Code, Amp, and other MCP-compatible AI assistants.
+
+Currently indexes 13 corpora (~18,000 vectors) across major agentic AI SDKs: Google ADK, OpenAI Agents, LangChain/LangGraph, Anthropic Claude SDK, and CrewAI.
 
 **Secondary feature**: 44 IDE-agnostic workflows for building agents with Google ADK.
 
 ---
 
-## Quick Start
+## MCP Server Integration
+
+Expose the RAG pipeline as tools for AI coding agents via the Model Context Protocol.
+
+### Prerequisites
+
+- [uv](https://docs.astral.sh/uv/) package manager
+- [Voyage AI API Key](https://dash.voyageai.com/)
+- [Qdrant Cloud](https://cloud.qdrant.io/) cluster (free tier works)
+
+### Installation (BYOK - Bring Your Own Keys)
+
+**1. Clone and install:**
+
+```bash
+git clone https://github.com/MattMagg/agentic-rag-sdk.git
+cd agentic-rag-sdk
+uv pip install -e .
+```
+
+**2. Configure environment:**
+
+```bash
+cp .env.example .env
+# Edit .env with your API keys
+```
+
+**3. Initialize the pipeline:**
+
+```bash
+# Verify API connections
+python -m grounding.scripts.00_smoke_test_connections
+
+# Create Qdrant collection with schema
+python -m grounding.scripts.02_ensure_collection_schema
+
+# Ingest all corpora (or specific ones)
+python -m grounding.scripts.03_ingest_corpus
+python -m grounding.scripts.03_ingest_corpus --corpus adk_docs  # Single corpus
+```
+
+**4. Add to your MCP client config:**
+
+For Claude Code / Amp, add to `.mcp.json` (or `~/.claude/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "rag": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/agentic-rag-sdk", "rag-mcp-server"],
+      "env": {
+        "QDRANT_URL": "https://your-cluster.qdrant.io",
+        "QDRANT_API_KEY": "your-qdrant-key",
+        "VOYAGE_API_KEY": "your-voyage-key"
+      }
+    }
+  }
+}
+```
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `rag_search` | Full RAG search with reranking and context expansion |
+| `rag_search_quick` | Fast retrieval without reranking |
+| `rag_corpus_list` | List available corpora and SDK groups |
+| `rag_corpus_info` | Get details about a specific corpus |
+| `rag_diagnose` | Check system health (Qdrant, Voyage connections) |
+| `rag_config_show` | Display current configuration |
+
+### Usage Examples
+
+Once configured, your AI assistant can use queries like:
+
+- *"Search for how to implement multi-agent orchestration in ADK"*
+- *"Find documentation about LangGraph checkpoints"*
+- *"Look up Claude Agent SDK streaming examples"*
+
+---
+
+## Quick Start (CLI)
 
 ### Prerequisites
 
@@ -19,9 +103,9 @@ A production-ready RAG pipeline using Voyage AI embeddings, Qdrant vector databa
 ### 1. Clone and Install
 
 ```bash
-git clone https://github.com/MattMagg/adk-workflow-rag.git
-cd adk-workflow-rag
-pip install -e .
+git clone https://github.com/MattMagg/agentic-rag-sdk.git
+cd agentic-rag-sdk
+uv pip install -e .
 ```
 
 ### 2. Configure Environment
@@ -43,38 +127,38 @@ QDRANT_COLLECTION="agentic_grounding_v1"
 
 ```bash
 # Verify API connections
-python -m src.grounding.scripts.00_smoke_test_connections
+python -m grounding.scripts.00_smoke_test_connections
 
 # Create Qdrant collection with schema
-python -m src.grounding.scripts.02_ensure_collection_schema
+python -m grounding.scripts.02_ensure_collection_schema
 
 # Ingest a corpus (e.g., ADK docs)
-python -m src.grounding.scripts.03_ingest_corpus --corpus adk_docs
+python -m grounding.scripts.03_ingest_corpus --corpus adk_docs
 ```
 
 ### 4. Query
 
 ```bash
 # Query Google ADK
-python -m src.grounding.query.query "How to implement multi-agent orchestration?" --sdk adk
+python -m grounding.query.query "How to implement multi-agent orchestration?" --sdk adk
 
 # Query OpenAI Agents SDK
-python -m src.grounding.query.query "How to create handoffs?" --sdk openai
+python -m grounding.query.query "How to create handoffs?" --sdk openai
 
 # Query LangChain ecosystem
-python -m src.grounding.query.query "How to use LangGraph checkpoints?" --sdk langchain
+python -m grounding.query.query "How to use LangGraph checkpoints?" --sdk langchain
 
 # Query Anthropic Claude Agent SDK
-python -m src.grounding.query.query "How to create a Claude agent?" --sdk anthropic
+python -m grounding.query.query "How to create a Claude agent?" --sdk anthropic
 
 # Query CrewAI Framework
-python -m src.grounding.query.query "How to define a CrewAI crew?" --sdk crewai
+python -m grounding.query.query "How to define a CrewAI crew?" --sdk crewai
 
 # With verbose output and multi-query expansion
-python -m src.grounding.query.query "your query" --verbose --multi-query
+python -m grounding.query.query "your query" --verbose --multi-query
 
 # With context expansion (fetch adjacent chunks for deeper understanding)
-python -m src.grounding.query.query "your query" --expand-context --expand-top-k 5
+python -m grounding.query.query "your query" --expand-context --expand-top-k 5
 ```
 
 ---
@@ -234,7 +318,7 @@ CORPUS_GROUPS = {
 ### Step 5: Ingest
 
 ```bash
-python -m src.grounding.scripts.03_ingest_corpus --corpus your_corpus_name
+python -m grounding.scripts.03_ingest_corpus --corpus your_corpus_name
 ```
 
 ---
@@ -270,12 +354,12 @@ This pipeline uses `voyage-context-3` (docs) and `voyage-code-3` (code) because 
 2. **Re-create Qdrant collection** (dimensions must match):
    ```bash
    # Delete existing collection first (via Qdrant console or API)
-   python -m src.grounding.scripts.02_ensure_collection_schema
+   python -m grounding.scripts.02_ensure_collection_schema
    ```
 
 3. **Re-ingest all corpora**:
    ```bash
-   python -m src.grounding.scripts.03_ingest_corpus
+   python -m grounding.scripts.03_ingest_corpus
    ```
 
 ---
@@ -354,10 +438,10 @@ After reranking identifies the most relevant chunks, context expansion **fetches
 **Configuration**:
 ```bash
 # Disable if needed (for latency-critical workloads)
-python -m src.grounding.query.query "query" --expand-context False
+python -m grounding.query.query "query" --expand-context False
 
 # Adjust parameters
-python -m src.grounding.query.query "query" \
+python -m grounding.query.query "query" \
     --expand-context \
     --expand-top-k 3 \      # Expand top 3 results (default: 5)
     --expand-window 2       # Fetch ±2 chunks (default: ±1)
@@ -404,7 +488,7 @@ See `.agent/workflows/adk-workflow/` for detailed workflow creation specs.
 ## Project Structure
 
 ```
-adk-workflow-rag/
+agentic-rag-sdk/
 ├── .agent/
 │   ├── workflows/           # 44 ADK development workflows
 │   │   ├── _schema.yaml     # Frontmatter schema
