@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "rag-qdrant-voyage"
 version = "0.1.0"
-description = "RAG pipeline with Voyage AI embeddings and Qdrant vector storage, plus 43 ADK agent development workflows"
+description = "Agentic RAG SDK - MCP server for grounding AI coding agents with Voyage AI + Qdrant hybrid retrieval"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -13,6 +13,8 @@ authors = [
     { name = "MattMagg" }
 ]
 keywords = [
+    "mcp",
+    "model-context-protocol",
     "rag",
     "retrieval-augmented-generation",
     "vector-database",
@@ -22,15 +24,11 @@ keywords = [
     "reranking",
     "hybrid-search",
     "semantic-search",
-    "adk",
-    "agent-development-kit",
-    "google-adk",
     "ai-agents",
     "llm",
     "grounding",
-    "ide-workflows",
+    "claude-code",
     "coding-agent",
-    "antigravity"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -72,6 +70,19 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/grounding", "src/rag_mcp_server"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "corpora/",
+    ".agent/",
+    "docs/",
+    "tests/",
+    "manifests/",
+    ".venv/",
+    ".worktrees/",
+    "*.md",
+    "!README.md",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
