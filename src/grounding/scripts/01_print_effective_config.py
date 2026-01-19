@@ -21,7 +21,7 @@ console = Console()
 
 def main() -> None:
     """Print the effective configuration."""
-    from src.grounding.config import get_settings_redacted
+    from grounding.config import get_settings_redacted
     
     config = get_settings_redacted()
     

@@ -7,8 +7,8 @@ import logging
 import sys
 from pprint import pprint
 
-from src.grounding.config import get_settings
-from src.grounding.query.retriever import retrieve_adk_evidence
+from grounding.config import get_settings
+from grounding.query.retriever import retrieve_adk_evidence
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

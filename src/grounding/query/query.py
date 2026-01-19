@@ -31,7 +31,7 @@ Multi-Stage Retrieval Pipeline:
    - Guarantees diverse result set across content types
 
 Usage:
-    from src.grounding.query.query import search
+    from grounding.query.query import search
 
     results = search(
         query="how to use tool context",
@@ -48,9 +48,9 @@ Usage:
     )
 
 Command line:
-    python -m src.grounding.query.query "how to use tool context" --top-k 12
-    python -m src.grounding.query.query "LoopAgent" --multi-query --verbose
-    python -m src.grounding.query.query "agent patterns" --expand-context --expand-top-k 3
+    python -m grounding.query.query "how to use tool context" --top-k 12
+    python -m grounding.query.query "LoopAgent" --multi-query --verbose
+    python -m grounding.query.query "agent patterns" --expand-context --expand-top-k 3
 """
 
 import os
@@ -81,7 +81,7 @@ except ImportError:
     print("ERROR: fastembed not installed. Run: pip install fastembed", file=sys.stderr)
     sys.exit(1)
 
-from src.grounding.config import get_settings
+from grounding.config import get_settings
 
 
 # Type aliases

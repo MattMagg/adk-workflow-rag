@@ -5,7 +5,7 @@ Loads environment variables from .env and parses config/settings.yaml
 with environment variable substitution.
 
 Usage:
-    from src.grounding.config import get_settings
+    from grounding.config import get_settings
     settings = get_settings()
 """
 

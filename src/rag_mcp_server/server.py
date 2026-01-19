@@ -28,10 +28,10 @@ from typing import Annotated, Any
 from fastmcp import FastMCP
 
 # Import the search function and corpus groups from grounding pipeline
-from src.grounding.query.query import CORPUS_GROUPS, search as grounding_search
-from src.grounding.config import get_settings
-from src.grounding.clients.qdrant_client import get_qdrant_client
-from src.grounding.clients.voyage_client import get_voyage_client
+from grounding.query.query import CORPUS_GROUPS, search as grounding_search
+from grounding.config import get_settings
+from grounding.clients.qdrant_client import get_qdrant_client
+from grounding.clients.voyage_client import get_voyage_client
 
 # Create the FastMCP server instance
 mcp = FastMCP("rag-server")
@@ -636,15 +636,10 @@ async def rag_diagnose() -> dict[str, Any]:
                     collection_info.points_count
                     if collection_info else 0
                 )
-                vectors_count = (
-                    collection_info.vectors_count
-                    if collection_info else 0
-                )
                 checks["qdrant"] = {
                     "status": "ok",
                     "collection": collection_name,
                     "points_count": points_count,
-                    "vectors_count": vectors_count,
                 }
             else:
                 checks["qdrant"] = {

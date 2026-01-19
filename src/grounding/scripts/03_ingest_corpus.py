@@ -37,19 +37,19 @@ from rich.table import Table
 from qdrant_client.models import PointStruct, SparseVector as QdrantSparseVector
 
 if TYPE_CHECKING:
-    from src.grounding.config import CorpusConfig
+    from grounding.config import CorpusConfig
 
-from src.grounding.config import get_settings, PROJECT_ROOT
-from src.grounding.clients.qdrant_client import get_qdrant_client
-from src.grounding.clients.voyage_client import get_voyage_client
-from src.grounding.clients.fastembed_client import get_fastembed_client, SparseVector
-from src.grounding.contracts.chunk import Chunk
-from src.grounding.contracts.ids import make_parent_doc_id, make_chunk_id
-from src.grounding.util.hashing import sha256_hex, normalize_text
-from src.grounding.util.time import now_iso
-from src.grounding.util.fs_walk import discover_files, read_file_content
-from src.grounding.chunkers.markdown import chunk_markdown, ChunkData as MdChunkData
-from src.grounding.chunkers.python_code import chunk_python, ChunkData as PyChunkData
+from grounding.config import get_settings, PROJECT_ROOT
+from grounding.clients.qdrant_client import get_qdrant_client
+from grounding.clients.voyage_client import get_voyage_client
+from grounding.clients.fastembed_client import get_fastembed_client, SparseVector
+from grounding.contracts.chunk import Chunk
+from grounding.contracts.ids import make_parent_doc_id, make_chunk_id
+from grounding.util.hashing import sha256_hex, normalize_text
+from grounding.util.time import now_iso
+from grounding.util.fs_walk import discover_files, read_file_content
+from grounding.chunkers.markdown import chunk_markdown, ChunkData as MdChunkData
+from grounding.chunkers.python_code import chunk_python, ChunkData as PyChunkData
 
 console = Console()
 

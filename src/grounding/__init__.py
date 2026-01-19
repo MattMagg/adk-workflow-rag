@@ -8,7 +8,7 @@ Provides:
 - Data contracts for chunks and documents
 """
 
-from src.grounding.config import get_settings, get_settings_redacted
+from grounding.config import get_settings, get_settings_redacted
 
 __all__ = [
     "get_settings",

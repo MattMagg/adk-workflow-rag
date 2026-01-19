@@ -19,7 +19,7 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 if TYPE_CHECKING:
     from qdrant_client.http.models import CollectionInfo
 
-from src.grounding.config import get_settings
+from grounding.config import get_settings
 
 
 class QdrantClientWrapper:

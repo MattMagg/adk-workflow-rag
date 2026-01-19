@@ -38,8 +38,8 @@ from qdrant_client.models import (
 if TYPE_CHECKING:
     from qdrant_client.http.models import CollectionInfo
 
-from src.grounding.clients.qdrant_client import get_qdrant_client
-from src.grounding.config import get_settings
+from grounding.clients.qdrant_client import get_qdrant_client
+from grounding.config import get_settings
 
 console = Console()
 

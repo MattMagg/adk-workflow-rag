@@ -23,7 +23,7 @@ def check_config() -> bool:
     """Check 1: Load and validate config."""
     console.print("\n[bold]1. Loading configuration...[/bold]")
     try:
-        from src.grounding.config import get_settings
+        from grounding.config import get_settings
         
         settings = get_settings()
         
@@ -46,7 +46,7 @@ def check_qdrant() -> bool:
     """Check 2: Connect to Qdrant Cloud."""
     console.print("\n[bold]2. Connecting to Qdrant Cloud...[/bold]")
     try:
-        from src.grounding.clients.qdrant_client import get_qdrant_client
+        from grounding.clients.qdrant_client import get_qdrant_client
         
         client = get_qdrant_client()
         
@@ -72,8 +72,8 @@ def check_voyage_code_embed() -> bool:
     """Check 3: Embed with voyage-code-3."""
     console.print("\n[bold]3. Testing voyage-code-3 embedding...[/bold]")
     try:
-        from src.grounding.clients.voyage_client import get_voyage_client
-        from src.grounding.config import get_settings
+        from grounding.clients.voyage_client import get_voyage_client
+        from grounding.config import get_settings
         
         client = get_voyage_client()
         settings = get_settings()
@@ -101,8 +101,8 @@ def check_voyage_contextualized_embed() -> bool:
     """Check 4: Embed with voyage-context-3 contextualized endpoint."""
     console.print("\n[bold]4. Testing voyage-context-3 contextualized embedding...[/bold]")
     try:
-        from src.grounding.clients.voyage_client import get_voyage_client
-        from src.grounding.config import get_settings
+        from grounding.clients.voyage_client import get_voyage_client
+        from grounding.config import get_settings
         
         client = get_voyage_client()
         settings = get_settings()
@@ -131,8 +131,8 @@ def check_voyage_rerank() -> bool:
     """Check 5: Rerank with rerank-2.5."""
     console.print("\n[bold]5. Testing rerank-2.5...[/bold]")
     try:
-        from src.grounding.clients.voyage_client import get_voyage_client
-        from src.grounding.config import get_settings
+        from grounding.clients.voyage_client import get_voyage_client
+        from grounding.config import get_settings
         
         client = get_voyage_client()
         settings = get_settings()

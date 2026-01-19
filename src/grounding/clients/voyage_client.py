@@ -18,7 +18,7 @@ from typing import Literal
 
 import voyageai
 
-from src.grounding.config import get_settings
+from grounding.config import get_settings
 
 
 InputType = Literal["query", "document"]

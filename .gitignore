@@ -165,6 +165,7 @@ corpora/agent-dev-docs
 
 # Session transcripts
 session-*.md
+*-test-*.txt
 
 # MCP memory files
 **/CLAUDE.md

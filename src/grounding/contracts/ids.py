@@ -11,7 +11,7 @@ Related files:
 
 from __future__ import annotations
 
-from src.grounding.util.hashing import sha1_hex
+from grounding.util.hashing import sha1_hex
 
 
 def make_parent_doc_id(corpus: str, commit: str, path: str) -> str:

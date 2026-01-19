@@ -10,8 +10,8 @@ Related files:
 - src/grounding/contracts/chunk.py - Chunk model
 """
 
-from src.grounding.chunkers.markdown import MarkdownChunker, chunk_markdown
-from src.grounding.chunkers.python_code import PythonChunker, chunk_python
+from grounding.chunkers.markdown import MarkdownChunker, chunk_markdown
+from grounding.chunkers.python_code import PythonChunker, chunk_python
 
 __all__ = [
     "MarkdownChunker",
