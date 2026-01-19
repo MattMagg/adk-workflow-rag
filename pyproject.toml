@@ -59,10 +59,10 @@ dependencies = [
 rag-mcp-server = "rag_mcp_server.server:main"
 
 [project.urls]
-Homepage = "https://github.com/MattMagg/adk-workflow-rag"
-Repository = "https://github.com/MattMagg/adk-workflow-rag"
-Documentation = "https://github.com/MattMagg/adk-workflow-rag#readme"
-Issues = "https://github.com/MattMagg/adk-workflow-rag/issues"
+Homepage = "https://github.com/MattMagg/agentic-rag-sdk"
+Repository = "https://github.com/MattMagg/agentic-rag-sdk"
+Documentation = "https://github.com/MattMagg/agentic-rag-sdk#readme"
+Issues = "https://github.com/MattMagg/agentic-rag-sdk/issues"
 
 [project.optional-dependencies]
 dev = [
